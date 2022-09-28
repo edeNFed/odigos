@@ -4,26 +4,31 @@ import (
 	"fmt"
 	odigosv1 "github.com/keyval-dev/odigos/api/v1alpha1"
 	"github.com/keyval-dev/odigos/common"
+	"github.com/keyval-dev/odigos/common/consts"
 	v1 "k8s.io/api/core/v1"
 )
 
 const (
-	dotnetAgentName       = "edenfed/otel-dotnet-agent:v0.1"
-	enableProfilingEnvVar = "CORECLR_ENABLE_PROFILING"
-	profilerEndVar        = "CORECLR_PROFILER"
-	profilerId            = "{918728DD-259F-4A6A-AC2B-B85E1B658318}"
-	profilerPathEnv       = "CORECLR_PROFILER_PATH"
-	profilerPath          = "/agent/OpenTelemetry.AutoInstrumentation.ClrProfiler.Native.so"
-	intergationEnv        = "OTEL_INTEGRATIONS"
-	intergations          = "/agent/integrations.json"
-	conventionsEnv        = "OTEL_CONVENTION"
-	serviceNameEnv        = "OTEL_SERVICE"
-	convetions            = "OpenTelemetry"
-	collectorUrlEnv       = "OTEL_TRACE_AGENT_URL"
-	tracerHomeEnv         = "OTEL_DOTNET_TRACER_HOME"
-	exportTypeEnv         = "OTEL_EXPORTER"
-	tracerHome            = "/agent"
-	dotnetVolumeName      = "agentdir-dotnet"
+	dotnetAgentName          = "keyval/dotnet-agent:v0.1"
+	enableProfilingEnvVar    = "CORECLR_ENABLE_PROFILING"
+	profilerEndVar           = "CORECLR_PROFILER"
+	profilerId               = "{918728DD-259F-4A6A-AC2B-B85E1B658318}"
+	profilerPathEnv          = "CORECLR_PROFILER_PATH"
+	profilerPath             = "/agent/OpenTelemetry.AutoInstrumentation.Native.so"
+	dotNetStartupHookEnv     = "DOTNET_STARTUP_HOOKS"
+	dotNetStartupHookPath    = "/agent/netcoreapp3.1/OpenTelemetry.AutoInstrumentation.StartupHook.dll"
+	dotNetAdditionalDeps     = "DOTNET_ADDITIONAL_DEPS"
+	serviceNameEnv           = "OTEL_SERVICE_NAME"
+	dotNetAdditionalDepsPath = "/agent/AdditionalDeps"
+	collectorUrlEnv          = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	dotNetSharedStore        = "DOTNET_SHARED_STORE"
+	dotNetSharedStorePath    = "/agent/store"
+	tracerHomeEnv            = "OTEL_DOTNET_AUTO_HOME"
+	exportTypeEnv            = "OTEL_TRACES_EXPORTER"
+	tracerHome               = "/agent"
+	dotnetVolumeName         = "agentdir-dotnet"
+	dotNetPropagatorEnv      = "OTEL_PROPAGATORS"
+	dotNetPropagatorEnvVal   = "tracecontext"
 )
 
 var dotNet = &dotNetPatcher{}
@@ -39,8 +44,9 @@ func (d *dotNetPatcher) Patch(podSpec *v1.PodTemplateSpec, instrumentation *odig
 	})
 
 	podSpec.Spec.InitContainers = append(podSpec.Spec.InitContainers, v1.Container{
-		Name:  "copy-dotnet-agent",
-		Image: dotnetAgentName,
+		Name:    "copy-dotnet-agent",
+		Image:   dotnetAgentName,
+		Command: []string{"cp", "-a", "/autoinstrumentation/.", "/agent/"},
 		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      dotnetVolumeName,
@@ -77,8 +83,13 @@ func (d *dotNetPatcher) Patch(podSpec *v1.PodTemplateSpec, instrumentation *odig
 			})
 
 			container.Env = append(container.Env, v1.EnvVar{
-				Name:  intergationEnv,
-				Value: intergations,
+				Name:  dotNetStartupHookEnv,
+				Value: dotNetStartupHookPath,
+			})
+
+			container.Env = append(container.Env, v1.EnvVar{
+				Name:  dotNetAdditionalDeps,
+				Value: dotNetAdditionalDepsPath,
 			})
 
 			container.Env = append(container.Env, v1.EnvVar{
@@ -87,14 +98,19 @@ func (d *dotNetPatcher) Patch(podSpec *v1.PodTemplateSpec, instrumentation *odig
 			})
 
 			container.Env = append(container.Env, v1.EnvVar{
-				Name:  conventionsEnv,
-				Value: convetions,
+				Name:  dotNetSharedStore,
+				Value: dotNetSharedStorePath,
+			})
+
+			container.Env = append(container.Env, v1.EnvVar{
+				Name:  dotNetPropagatorEnv,
+				Value: dotNetPropagatorEnvVal,
 			})
 
 			// Currently .NET instrumentation only support zipkin format, we should move to OTLP when support is added
 			container.Env = append(container.Env, v1.EnvVar{
 				Name:  collectorUrlEnv,
-				Value: fmt.Sprintf("http://%s:9411/api/v2/spans", HostIPEnvValue),
+				Value: fmt.Sprintf("http://%s:%d", HostIPEnvValue, consts.OTLPHttpPort),
 			})
 
 			container.Env = append(container.Env, v1.EnvVar{
@@ -104,7 +120,7 @@ func (d *dotNetPatcher) Patch(podSpec *v1.PodTemplateSpec, instrumentation *odig
 
 			container.Env = append(container.Env, v1.EnvVar{
 				Name:  exportTypeEnv,
-				Value: "Zipkin",
+				Value: "otlp",
 			})
 
 			container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{

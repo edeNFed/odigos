@@ -1,5 +1,12 @@
-FROM alpine:3
-ADD https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/v0.0.1/otel-dotnet-autoinstrumentation-0.0.1-musl.tar.gz /tmp/
-ADD init.sh /tmp
-RUN chmod +x /tmp/init.sh
-ENTRYPOINT [ "/tmp/init.sh"]
+FROM busybox
+
+ARG version
+
+WORKDIR /autoinstrumentation
+
+# TODO: Detect musl / libc during lang detection process and choose the right instrumentation
+ADD https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download//v0.3.1-beta.1/opentelemetry-dotnet-instrumentation-linux-musl.zip .
+
+RUN unzip opentelemetry-dotnet-instrumentation-linux-musl.zip
+
+RUN chmod -R go+r .
