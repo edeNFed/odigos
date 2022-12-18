@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: odigos-device-manager
+  namespace: odigos-system
+  labels:
+    name: odigos-device-manager
+spec:
+  selector:
+    matchLabels:
+      name: odigos-device-manager
+  template:
+    metadata:
+      labels:
+        name: odigos-device-manager
+    spec:
+      containers:
+        - name: odigos-device-manager
+          image: keyval/device-plugin:v0.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: deviceplugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: deviceplugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
