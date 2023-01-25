@@ -23,7 +23,13 @@ spec:
           volumeMounts:
             - name: deviceplugin
               mountPath: /var/lib/kubelet/device-plugins
+            - name: pod-resources
+              readOnly: true
+              mountPath: /var/lib/kubelet/pod-resources
       volumes:
         - name: deviceplugin
           hostPath:
             path: /var/lib/kubelet/device-plugins
+        - name: pod-resources
+          hostPath:
+            path: /var/lib/kubelet/pod-resources
