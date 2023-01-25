@@ -1,0 +1,26 @@
+# Deployment of grpc-server application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-server
+  labels:
+    app: grpc-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grpc-server
+  template:
+    metadata:
+      labels:
+        app: grpc-server
+    spec:
+      containers:
+      - name: grpc-server
+        image: edenfed/grpc-server:v0.1
+        imagePullPolicy: IfNotPresent
+        resources:
+          limits:
+            odigos.io/instrumentation: 1
+        ports:
+        - containerPort: 50051
