@@ -1,38 +1,56 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import * as k8s from "@kubernetes/client-node";
 import { Socket } from "dgram";
+import Vendors, { ObservabilityVendor, VendorObjects } from "@/vendors/index";
 
 async function UpdateDest(req: NextApiRequest, res: NextApiResponse) {
-  const kc = new k8s.KubeConfig();
-  kc.loadFromDefault();
-  const k8sApi = kc.makeApiClient(k8s.CustomObjectsApi);
-  const current = await k8sApi.getNamespacedCustomObject(
-    "odigos.io",
-    "v1alpha1",
-    process.env.CURRENT_NS || "odigos-system",
-    "destinations",
-    req.query.destname as string
-  );
+  try {
+    const vendor = Vendors.find(
+      (v: ObservabilityVendor) => v.name === req.body.destType
+    );
 
-  const updated = current.body;
-  const { spec }: any = updated;
-  spec.data = {
-    [req.body.destType]: JSON.parse(req.body.values),
-  };
-
-  const resp = await k8sApi.replaceNamespacedCustomObject(
-    "odigos.io",
-    "v1alpha1",
-    process.env.CURRENT_NS || "odigos-system",
-    "destinations",
-    req.query.destname as string,
-    {
-      ...updated,
-      spec,
+    if (!vendor) {
+      return res.status(400).json({
+        error: `Vendor ${req.body.type} not found`,
+      });
     }
-  );
+    const kubeObjects: VendorObjects = vendor.toObjects(req);
 
-  return res.status(200).json({ success: true });
+    const kc = new k8s.KubeConfig();
+    kc.loadFromDefault();
+    const k8sApi = kc.makeApiClient(k8s.CustomObjectsApi);
+    const current = await k8sApi.getNamespacedCustomObject(
+      "odigos.io",
+      "v1alpha1",
+      process.env.CURRENT_NS || "odigos-system",
+      "destinations",
+      req.query.destname as string
+    );
+
+    const updated = current.body;
+    const { spec }: any = updated;
+
+    if (kubeObjects.Data) {
+      spec.data = kubeObjects.Data;
+    }
+
+    const resp = await k8sApi.replaceNamespacedCustomObject(
+      "odigos.io",
+      "v1alpha1",
+      process.env.CURRENT_NS || "odigos-system",
+      "destinations",
+      req.query.destname as string,
+      {
+        ...updated,
+        spec,
+      }
+    );
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(`Error updating destination ${req.query.destname}`, err);
+    return res.status(500).json({ success: false });
+  }
 }
 
 async function DeleteDest(req: NextApiRequest, res: NextApiResponse) {

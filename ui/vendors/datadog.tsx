@@ -44,7 +44,9 @@ export class Datadog implements ObservabilityVendor {
         DATADOG_SITE: req.body.site,
       },
       Secret: {
-        DATADOG_API_KEY: Buffer.from(req.body.apikey).toString("base64"),
+        DATADOG_API_KEY: req.body.apikey
+          ? Buffer.from(req.body.apikey).toString("base64")
+          : "",
       },
     };
   };

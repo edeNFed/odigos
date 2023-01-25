@@ -45,11 +45,11 @@ const NewDestination: NextPage<EditDestProps> = ({
     formData.forEach(function (value, key) {
       object[key] = value.toString();
     });
-    const JSONdata = JSON.stringify(object);
+
     const response = await fetch(`/api/dest/${destName}`, {
       body: JSON.stringify({
         destType,
-        values: JSONdata,
+        ...object,
       }),
       headers: {
         "Content-Type": "application/json",
