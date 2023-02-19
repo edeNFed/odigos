@@ -252,6 +252,7 @@ func (r *InstrumentedApplicationReconciler) createLangDetectionPod(targetPod *co
 					},
 					TerminationMessagePath: "/dev/detection-result",
 					SecurityContext: &corev1.SecurityContext{
+						Privileged: boolPtr(true),
 						Capabilities: &corev1.Capabilities{
 							Add: []corev1.Capability{"SYS_PTRACE"},
 						},
@@ -343,4 +344,8 @@ func (r *InstrumentedApplicationReconciler) SetupWithManager(mgr ctrl.Manager) e
 		For(&v1.InstrumentedApplication{}).
 		Owns(&corev1.Pod{}).
 		Complete(r)
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
