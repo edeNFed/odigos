@@ -15,7 +15,7 @@ const (
 	OdigosInstrumentationLabel          = "odigos-instrumentation"
 	InstrumentationEnabled              = "enabled"
 	InstrumentationDisabled             = "disabled"
-	GolangInstrumentationImage          = "keyval/otel-go-agent:v0.6.5"
+	GolangInstrumentationImage          = "edenfed/otel-go-agent:v0.555"
 )
 
 var (

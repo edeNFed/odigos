@@ -2,6 +2,7 @@ package patch
 
 import (
 	"fmt"
+
 	odigosv1 "github.com/keyval-dev/odigos/api/odigos/v1alpha1"
 	"github.com/keyval-dev/odigos/common"
 	"github.com/keyval-dev/odigos/common/consts"
@@ -14,7 +15,7 @@ const (
 	golangKernelDebugHostPath   = "/sys/kernel/debug"
 	golangExporterEndpoint      = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	golangServiceNameEnv        = "OTEL_SERVICE_NAME"
-	golangTargetExeEnv          = "OTEL_TARGET_EXE"
+	golangTargetExeEnv          = "OTEL_GO_AUTO_TARGET_EXE"
 )
 
 var golang = &golangPatcher{}
@@ -56,7 +57,7 @@ func (g *golangPatcher) Patch(podSpec *v1.PodTemplateSpec, instrumentation *odig
 					},
 					{
 						Name:  golangExporterEndpoint,
-						Value: fmt.Sprintf("%s:%d", HostIPEnvValue, consts.OTLPPort),
+						Value: fmt.Sprintf("http://%s:%d", HostIPEnvValue, consts.OTLPPort),
 					},
 					{
 						Name:  golangServiceNameEnv,
