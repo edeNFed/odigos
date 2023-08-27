@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+
 	"github.com/go-logr/logr"
 	odigosv1 "github.com/keyval-dev/odigos/api/odigos/v1alpha1"
 	"github.com/keyval-dev/odigos/common/utils"
@@ -47,6 +48,10 @@ type InstrumentedApplicationReconciler struct {
 // 1. InstrumentedApplication must have at least one language specified
 // 2. Data collection pods must be running (DataCollection CollectorsGroup .status.ready == true)
 func (r *InstrumentedApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// TODO(edenfed): Annotate or Unannotate all pods of InstrumentedApplication if should delegate instrumentation to Odiglet
+	// TODO(edenfed): Do we even need the status field?
+	// TODO(edenfed): Add pod reconciler that add/remove annotation if shouldInstrument && instrumentationDelegated
+
 	logger := log.FromContext(ctx)
 	var runtimeDetails odigosv1.InstrumentedApplication
 	err := r.Get(ctx, req.NamespacedName, &runtimeDetails)

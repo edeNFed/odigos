@@ -92,6 +92,11 @@ func NewInstrumentedApp() apiextensionsv1.CustomResourceDefinition {
 								},
 								"status": {
 									Type: "object",
+									Properties: map[string]apiextensionsv1.JSONSchemaProps{
+										"delegated": {
+											Type: "boolean",
+										},
+									},
 								},
 							},
 						},

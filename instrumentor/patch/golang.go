@@ -7,12 +7,10 @@ import (
 	"github.com/keyval-dev/odigos/common"
 	"github.com/keyval-dev/odigos/common/consts"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 const (
-	golangDeviceName            = "instrumentation.odigos.io/go"
 	golangKernelDebugVolumeName = "kernel-debug"
 	golangKernelDebugHostPath   = "/sys/kernel/debug"
 	golangExporterEndpoint      = "OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -29,32 +27,13 @@ type golangPatcher struct{}
 func (g *golangPatcher) Patch(podSpec *v1.PodTemplateSpec, instrumentation *odigosv1.InstrumentedApplication) {
 	if GolangSidecarInstrumentation {
 		g.patchWithSidecar(podSpec, instrumentation)
-		return
 	}
-
-	var modifiedContainers []v1.Container
-	for _, container := range podSpec.Spec.Containers {
-		if shouldPatch(instrumentation, common.GoProgrammingLanguage, container.Name) {
-			if container.Resources.Limits == nil {
-				container.Resources.Limits = make(map[v1.ResourceName]resource.Quantity)
-			}
-
-			container.Resources.Limits[golangDeviceName] = resource.MustParse("1")
-		}
-
-		modifiedContainers = append(modifiedContainers, container)
-	}
-
-	podSpec.Spec.Containers = modifiedContainers
 }
 
 func (g *golangPatcher) Revert(podSpec *v1.PodTemplateSpec) {
 	if GolangSidecarInstrumentation {
 		g.revertWithSidecar(podSpec)
-		return
 	}
-
-	removeDeviceFromPodSpec(golangDeviceName, podSpec)
 }
 
 func (g *golangPatcher) patchWithSidecar(podSpec *v1.PodTemplateSpec, instrumentation *odigosv1.InstrumentedApplication) {

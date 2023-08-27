@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/keyval-dev/odigos/common"
+
 	"github.com/go-logr/logr"
 	odigosv1 "github.com/keyval-dev/odigos/api/odigos/v1alpha1"
 	"github.com/keyval-dev/odigos/common/consts"
@@ -44,6 +46,17 @@ func isDataCollectionReady(ctx context.Context, c client.Client) bool {
 }
 
 func instrument(logger logr.Logger, ctx context.Context, kubeClient client.Client, runtimeDetails *odigosv1.InstrumentedApplication) error {
+	if shouldDelegateInstrumentationToOdiglet(runtimeDetails) {
+		_, err := controllerutil.CreateOrPatch(ctx, kubeClient, runtimeDetails, func() error {
+			runtimeDetails.Status.Delegated = boolPtr(true)
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
 	obj, err := getTargetObject(ctx, kubeClient, runtimeDetails)
 	if err != nil {
 		return err
@@ -108,6 +121,16 @@ func uninstrument(logger logr.Logger, ctx context.Context, kubeClient client.Cli
 	}
 
 	return nil
+}
+
+func shouldDelegateInstrumentationToOdiglet(instApp *odigosv1.InstrumentedApplication) bool {
+	for _, l := range instApp.Spec.Languages {
+		if l.Language == common.GoProgrammingLanguage {
+			return true
+		}
+	}
+
+	return false
 }
 
 func getTargetObject(ctx context.Context, kubeClient client.Client, runtimeDetails *odigosv1.InstrumentedApplication) (client.Object, error) {
@@ -231,4 +254,8 @@ func removeReportedNameAnnotation(obj client.Object) bool {
 	delete(annotations, consts.OdigosReportedNameAnnotation)
 	obj.SetAnnotations(annotations)
 	return true
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }

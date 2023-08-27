@@ -28,6 +28,7 @@ type InstrumentedApplicationSpec struct {
 
 // InstrumentedApplicationStatus defines the observed state of InstrumentedApplication
 type InstrumentedApplicationStatus struct {
+	Delegated *bool `json:"delegated,omitempty"`
 }
 
 //+genclient
