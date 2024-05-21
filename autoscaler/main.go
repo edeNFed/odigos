@@ -17,9 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strings"
+
+	"github.com/odigos-io/odigos/autoscaler/custommetrics"
+
+	"github.com/go-logr/logr"
 
 	"github.com/go-logr/zapr"
 	bridge "github.com/odigos-io/opentelemetry-zap-bridge"
@@ -105,8 +110,8 @@ func main() {
 			BindAddress: metricsAddr,
 		},
 		HealthProbeBindAddress: probeAddr,
-		LeaderElection:   enableLeaderElection,
-		LeaderElectionID: "f681cfed.odigos.io",
+		LeaderElection:         enableLeaderElection,
+		LeaderElectionID:       "f681cfed.odigos.io",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -164,6 +169,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx := ctrl.SetupSignalHandler()
+	if err := startCustomMetricsServer(ctx, setupLog); err != nil {
+		setupLog.Error(err, "unable to start custom metrics server")
+		os.Exit(1)
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -176,8 +187,44 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func startCustomMetricsServer(ctx context.Context, logger logr.Logger) error {
+	adapter := &custommetrics.Adapter{}
+	adapter.Flags().AddGoFlagSet(flag.CommandLine)
+	err := adapter.Flags().Parse(os.Args)
+	if err != nil {
+		logger.Error(err, "failed to parse flags")
+		return err
+	}
+
+	// Set cert-dir to /tmp to avoid permission issues
+	// See: https://github.com/kubernetes-sigs/metrics-server/issues/37
+	adapter.SecureServing.ServerCert.CertDirectory = "/tmp"
+	adapter.SecureServing.BindPort = 4443
+
+	// Allow external traffic
+	//adapter.SecureServing.BindAddress = net.IPv4zero
+
+	provider, err := adapter.NewProvider()
+	if err != nil {
+		logger.Error(err, "failed to create provider")
+		return err
+	}
+
+	adapter.WithCustomMetrics(provider)
+	go func() {
+		err = adapter.Run(ctx.Done())
+		if err != nil {
+			logger.Error(err, "failed to run adapter")
+		}
+
+		logger.V(0).Info("Shutting down custom metrics server")
+	}()
+
+	return nil
 }
