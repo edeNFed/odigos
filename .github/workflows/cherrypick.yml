@@ -80,7 +80,15 @@ jobs:
                   body = f"Backporting commit {commit_sha} from main to {target_branch}\n\nOriginal commit message:\n{commit.commit.message}"
                   new_pr = repo.create_pull(title=title, body=body, head=new_branch, base=target_branch)
           
-                  new_pr.enable_automerge()
+                  # Add original PR author as reviewer
+                  new_pr.create_review_request(reviewers=[pr.user.login])
+          
+                  # Try to enable auto-merge
+                  try:
+                      new_pr.enable_automerge()
+                  except GithubException as e:
+                      print(f"Warning: Could not enable auto-merge for PR #{new_pr.number}. Error: {str(e)}")
+          
                   pr.create_issue_comment(f"Backport to {target_branch} successful. New PR: #{new_pr.number}")
                   print(f"Created PR #{new_pr.number} for backport to {target_branch}")
               except GithubException as e:
