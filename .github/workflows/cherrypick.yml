@@ -1,4 +1,4 @@
-name: Backport Bot
+name: Release Bot
 
 on:
   pull_request:
@@ -8,11 +8,6 @@ jobs:
   backport:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -23,13 +18,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install PyGithub
 
-      - name: Run backport bot
+      - name: Run release bot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << EOF > release_bot.py
           import os
-          import subprocess
           from github import Github
           from github.GithubException import GithubException
           
@@ -46,26 +40,42 @@ jobs:
                   # Add initial comment
                   pr.create_issue_comment(f"Ok, backporting change '{change_name}' to {target_branch} branch. New PR will follow.")
           
-                  repo.create_git_ref(ref=f"refs/heads/{new_branch}", sha=repo.get_branch(target_branch).commit.sha)
+                  # Create new branch
+                  base_branch = repo.get_branch(target_branch)
+                  repo.create_git_ref(ref=f"refs/heads/{new_branch}", sha=base_branch.commit.sha)
           
-                  # Try to backport (cherry-pick) the commit
-                  try:
-                      subprocess.run(['git', 'checkout', new_branch], check=True)
-                      subprocess.run(['git', 'cherry-pick', commit_sha], check=True)
-                      subprocess.run(['git', 'push', 'origin', new_branch], check=True)
-                  except subprocess.CalledProcessError:
-                      # Backport failed, create a comment on the original PR
-                      comment = f"@{pr.user.login} Backport to {target_branch} failed due to conflicts. Please resolve manually:\n\n" \
-                                f"1. Checkout the {target_branch} branch\n" \
-                                f"2. Create a new branch: `git checkout -b {new_branch}`\n" \
-                                f"3. Backport the commit: `git cherry-pick {commit_sha}`\n" \
-                                f"4. Resolve conflicts\n" \
-                                f"5. Commit changes and push the branch\n" \
-                                f"6. Create a pull request from {new_branch} to {target_branch}"
-                      pr.create_issue_comment(comment)
-                      print(f"Backport to {target_branch} failed. Comment added to PR #{pr.number}")
-                      return
+                  # Get the file changes from the original commit
+                  files = commit.files
           
+                  # Apply changes to the new branch
+                  for file in files:
+                      if file.status == "added" or file.status == "modified":
+                          try:
+                              contents = repo.get_contents(file.filename, ref=target_branch)
+                              repo.update_file(
+                                  file.filename,
+                                  f"Backport: {change_name}",
+                                  file.patch,
+                                  contents.sha,
+                                  branch=new_branch
+                              )
+                          except:
+                              repo.create_file(
+                                  file.filename,
+                                  f"Backport: {change_name}",
+                                  file.patch,
+                                  branch=new_branch
+                              )
+                      elif file.status == "removed":
+                          contents = repo.get_contents(file.filename, ref=target_branch)
+                          repo.delete_file(
+                              file.filename,
+                              f"Backport: {change_name}",
+                              contents.sha,
+                              branch=new_branch
+                          )
+          
+                  # Create pull request
                   title = f"Backport: {change_name}"
                   body = f"Backporting commit {commit_sha} from main to {target_branch}\n\nOriginal commit message:\n{commit.commit.message}"
                   new_pr = repo.create_pull(title=title, body=body, head=new_branch, base=target_branch)
@@ -87,6 +97,8 @@ jobs:
           
                   if "release/beta" in labels:
                       backport_commit(pr, pr.merge_commit_sha, "beta")
+              else:
+                  print(f"PR #{pr_number} is not merged. Skipping backport process.")
           
           if __name__ == "__main__":
               event_name = os.environ["GITHUB_EVENT_NAME"]
