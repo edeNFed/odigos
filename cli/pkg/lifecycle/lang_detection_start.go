@@ -39,6 +39,6 @@ func (r *RequestLangDetection) Execute(ctx context.Context, obj client.Object, t
 		},
 	}
 
-	_, err := r.client.OdigosClient.Sources(newSource.GetNamespace()).Create(ctx, newSource, metav1.CreateOptions{})
+	_, err := r.client.OdigosClient.Sources(obj.GetNamespace()).Create(ctx, newSource, metav1.CreateOptions{})
 	return err
 }

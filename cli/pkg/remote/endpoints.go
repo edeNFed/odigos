@@ -53,7 +53,7 @@ func GetNumberOfDestinations(ctx context.Context, client *kube.Client) (int, err
 }
 
 func GetDescribeSourceEndpoint(workloadKind string, workloadNs string, workloadName string) string {
-	return fmt.Sprintf("http://localhost:%s/api/describe/source/namespace/%s/kind/%s/name/%s", DefaultLocalPort, workloadNs, strings.ToLower(workloadKind), workloadName)
+	return fmt.Sprintf("http://localhost:%s/describe/source/namespace/%s/kind/%s/name/%s", DefaultLocalPort, workloadNs, strings.ToLower(workloadKind), workloadName)
 }
 
 func DescribeSource(ctx context.Context, client *kube.Client, odigosNs string, workloadKind string, workloadNs string, workloadName string) (*source.SourceAnalyze, error) {

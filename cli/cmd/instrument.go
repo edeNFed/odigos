@@ -161,6 +161,12 @@ func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, exc
 		}
 
 		dep, err := client.AppsV1().Deployments(onlyNamespace).Get(ctx, onlyDeployment, metav1.GetOptions{})
+
+		// TODO: This is ugly hack to make controller-runtime based functions work, need to refactor
+		dep.TypeMeta = metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+		}
 		if err != nil {
 			fmt.Printf("\033[31mERROR\033[0m Cannot get deployment %s in namespace %s: %s\n", onlyDeployment, onlyNamespace, err)
 			os.Exit(1)
