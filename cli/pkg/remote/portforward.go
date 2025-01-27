@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/odigos-io/odigos/api/k8sconsts"
+
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/portforward"
@@ -114,7 +116,7 @@ func (u *UIClientViaPortForward) Close() error {
 
 func findOdigosUIPod(client *kube.Client, ctx context.Context, ns string) (*corev1.Pod, error) {
 	pods, err := client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("app=%s", resources.UIAppLabelValue),
+		LabelSelector: fmt.Sprintf("app=%s", k8sconsts.UIAppLabelValue),
 	})
 
 	if err != nil {

@@ -3,9 +3,9 @@ package utils
 import (
 	"context"
 
-	"github.com/odigos-io/odigos/k8sutils/pkg/container"
-	"github.com/odigos-io/odigos/k8sutils/pkg/workload"
+	"github.com/odigos-io/odigos/api/k8sconsts"
 
+	"github.com/odigos-io/odigos/k8sutils/pkg/container"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,8 +58,10 @@ func checkAllPodsRunningAndNotInstrumented(pods *corev1.PodList) bool {
 
 func isPodContainsInstrumentation(pod *corev1.Pod) bool {
 	for _, c := range pod.Spec.Containers {
-		if workload.IsContainerInstrumented(&c) {
-			return true
+		for _, env := range c.Env {
+			if env.Name == k8sconsts.OdigosEnvVarPodName {
+				return true
+			}
 		}
 	}
 	return false

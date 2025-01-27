@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
+	"github.com/odigos-io/odigos/cli/pkg/kube"
+
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/odigos-io/odigos/common/consts"
@@ -17,58 +22,49 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/odigos-io/odigos/k8sutils/pkg/workload"
-
-	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (o *Orchestrator) rollBack(obj client.Object, templateSpecFetcher PodTemplateSpecFetcher) error {
+func (o *Orchestrator) rollBack(obj client.Object) error {
 	// We create a new context for the rollback operation to ensure that the operation is not cancelled by the parent context
 	ctx := context.Background()
 
-	o.log("Rolling back changes to deployment")
-	templateSpec, err := templateSpecFetcher(ctx, obj.GetName(), obj.GetNamespace())
+	o.log("Rolling back changes to pods")
+	source, err := getSource(ctx, o.Client, obj)
 	if err != nil {
-		o.log("Error fetching template spec")
+		if apierrors.IsNotFound(err) {
+			o.log("No changes made by Odigos, skipping rollback")
+			return nil
+		}
 		return err
 	}
 
-	if isObjectModifiedByOdigos(obj, templateSpec) {
-		err := patchOdigosLabel(ctx, o.Client, obj)
+	err = o.Client.OdigosClient.Sources(obj.GetNamespace()).Delete(ctx, source.GetName(), metav1.DeleteOptions{})
+	if err != nil {
+		o.log("Error deleting source")
+		return err
+	}
+
+	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (bool, error) {
+		rolloutCompleted, err := utils.VerifyAllPodsAreNOTInstrumented(ctx, o.Client, obj)
 		if err != nil {
-			return err
+			o.log("Error verifying all pods are not instrumented")
+			return false, err
 		}
 
-		err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (bool, error) {
-			templateSpec, err := templateSpecFetcher(ctx, obj.GetName(), obj.GetNamespace())
-			if err != nil {
-				o.log("Error fetching template spec")
-				return false, err
-			}
+		if rolloutCompleted {
+			o.log("Rollout completed, all running pods does not contains instrumentation")
+		}
 
-			for _, container := range templateSpec.Spec.Containers {
-				if workload.IsContainerInstrumented(&container) {
-					return false, nil
-				}
-			}
+		return rolloutCompleted, nil
+	})
 
-			rolloutCompleted, err := utils.VerifyAllPodsAreNOTInstrumented(ctx, o.Client, obj)
-			if err != nil {
-				o.log("Error verifying all pods are not instrumented")
-				return false, err
-			}
-
-			if rolloutCompleted {
-				o.log("Rollout completed, all running pods does not contains instrumentation")
-			}
-
-			return rolloutCompleted, nil
-		})
-
-	} else {
-		o.log("No changes made by Odigos, skipping rollback")
+	if err != nil {
+		o.log("Error rolling back changes")
+		return err
 	}
+
+	o.log("Rollback completed successfully")
 	return nil
 }
 
@@ -120,16 +116,18 @@ func patchOdigosLabel(ctx context.Context, client kubernetes.Interface, obj clie
 
 }
 
-func isObjectModifiedByOdigos(obj client.Object, templateSpec *v1.PodTemplateSpec) bool {
-	if workload.IsObjectLabeledForInstrumentation(obj) {
-		return true
+func getSource(ctx context.Context, c *kube.Client, obj client.Object) (*v1alpha1.Source, error) {
+	sources, err := c.OdigosClient.Sources(obj.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: v1alpha1.GetSourceLabelSelector(obj).String(),
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	for _, container := range templateSpec.Spec.Containers {
-		if workload.IsContainerInstrumented(&container) {
-			return true
-		}
+	if sources == nil || len(sources.Items) != 1 {
+		return nil, fmt.Errorf("expected 1 source, got %d", len(sources.Items))
 	}
 
-	return false
+	return &sources.Items[0], nil
 }
