@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/odigos-io/odigos/cli/cmd/resources"
+
 	"github.com/odigos-io/odigos/api/k8sconsts"
 
 	"github.com/odigos-io/odigos/cli/pkg/remote"
@@ -152,6 +154,12 @@ Odigos CLI and monitor the instrumentation status.`,
 
 func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, excludedApps map[string]struct{}, dryRun bool, remote bool, onlyNamespace, onlyDeployment string) {
 	systemNs := sliceToMap(k8sconsts.DefaultIgnoredNamespaces)
+	odigosNs, err := resources.GetOdigosNamespace(client, ctx)
+	systemNs[odigosNs] = struct{}{}
+	if err != nil {
+		fmt.Printf("\033[31mERROR\033[0m Cannot get Odigos namespace: %s\n", err)
+		os.Exit(1)
+	}
 
 	if onlyDeployment != "" {
 		orchestrator, err := lifecycle.NewOrchestrator(client, ctx, remote)
@@ -227,6 +235,12 @@ func instrumentNamespace(ctx context.Context, client *kube.Client, ns string, ex
 	}
 
 	for _, dep := range deps.Items {
+		// TODO: This is ugly hack to make controller-runtime based functions work, need to refactor
+		dep.TypeMeta = metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+		}
+
 		fmt.Printf("  - Inspecting Deployment: %s\n", dep.Name)
 		_, excluded := excludedApps[dep.Name]
 		if excluded {
