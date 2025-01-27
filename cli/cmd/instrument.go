@@ -13,13 +13,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/odigos-io/odigos/api/k8sconsts"
+
 	"github.com/odigos-io/odigos/cli/pkg/remote"
 
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/odigos-io/odigos/cli/pkg/lifecycle"
-
-	"github.com/odigos-io/odigos/common/consts"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -151,7 +151,7 @@ Odigos CLI and monitor the instrumentation status.`,
 }
 
 func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, excludedApps map[string]struct{}, dryRun bool, remote bool, onlyNamespace, onlyDeployment string) {
-	systemNs := sliceToMap(consts.SystemNamespaces)
+	systemNs := sliceToMap(k8sconsts.DefaultIgnoredNamespaces)
 
 	if onlyDeployment != "" {
 		orchestrator, err := lifecycle.NewOrchestrator(client, ctx, remote)

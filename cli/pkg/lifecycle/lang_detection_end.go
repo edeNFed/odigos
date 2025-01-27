@@ -29,7 +29,7 @@ func (w *WaitForLangDetection) From() State {
 }
 
 func (w *WaitForLangDetection) To() State {
-	return LangDetectedState
+	return InstrumentationInProgress
 }
 
 func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, templateSpec *corev1.PodTemplateSpec, isRemote bool) error {
@@ -38,20 +38,20 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 	iaName := workload.CalculateWorkloadRuntimeObjectName(name, kind)
 	return wait.PollUntilContextTimeout(ctx, 1*time.Second, 1*time.Minute, true, func(ctx context.Context) (bool, error) {
 		if !isRemote {
-			ia, err := w.client.OdigosClient.InstrumentedApplications(obj.GetNamespace()).Get(ctx, iaName, metav1.GetOptions{})
+			ic, err := w.client.OdigosClient.InstrumentationConfigs(obj.GetNamespace()).Get(ctx, iaName, metav1.GetOptions{})
 			if err != nil {
 				if !apierrors.IsNotFound(err) {
-					w.log("Error while fetching InstrumentedApplication: " + err.Error())
+					w.log("Error while fetching InstrumentationConfig: " + err.Error())
 				}
 				return false, nil
 			}
 
-			if ia.Spec.RuntimeDetails == nil || len(ia.Spec.RuntimeDetails) == 0 {
+			if ic.Status.RuntimeDetailsByContainer == nil || len(ic.Status.RuntimeDetailsByContainer) == 0 {
 				return false, nil
 			}
 
 			langFound := false
-			for _, rd := range ia.Spec.RuntimeDetails {
+			for _, rd := range ic.Status.RuntimeDetailsByContainer {
 				if rd.Language != common.UnknownProgrammingLanguage && rd.Language != common.IgnoredProgrammingLanguage {
 					w.log(fmt.Sprintf("Detected language: %s", rd.Language))
 					langFound = true
@@ -81,11 +81,11 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 			return false, nil
 		}
 
-		if describe.InstrumentedApplication.Created.Value == nil {
+		if describe.InstrumentationConfig.Created.Value == nil {
 			return false, nil
 		}
 
-		iaCreated, ok := describe.InstrumentedApplication.Created.Value.(string)
+		iaCreated, ok := describe.InstrumentationConfig.Created.Value.(string)
 		if !ok {
 			w.log("Failed to get instrumented application status, skipping")
 			return false, nil
@@ -95,12 +95,12 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 			return false, nil
 		}
 
-		if len(describe.InstrumentedApplication.Containers) == 0 {
+		if len(describe.InstrumentationConfig.Containers) == 0 {
 			return false, nil
 		}
 
 		langFound := false
-		for _, c := range describe.InstrumentedApplication.Containers {
+		for _, c := range describe.InstrumentationConfig.Containers {
 			langStr, ok := c.Language.Value.(string)
 			if !ok {
 				continue

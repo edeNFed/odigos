@@ -3,7 +3,8 @@ package lifecycle
 import (
 	"context"
 	"fmt"
-	"strings"
+
+	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
 
 	"github.com/odigos-io/odigos/k8sutils/pkg/describe/source"
 
@@ -32,7 +33,6 @@ const (
 	NotInstrumentedState      State = "NotInstrumented"
 	PreflightChecksPassed     State = "PreflightChecksPassed"
 	LangDetectionInProgress   State = "LangDetectionInProgress"
-	LangDetectedState         State = "LangDetected"
 	InstrumentationInProgress State = "InstrumentationInProgress"
 	InstrumentedState         State = "Instrumented"
 )
@@ -72,19 +72,11 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 
 	go func() {
 		defer close(done)
-
-		templateSpec, err := templateSpecFetcher(ctx, obj.GetName(), obj.GetNamespace())
-		if err != nil {
-			o.log(fmt.Sprintf("Error fetching pod template spec: %s", err))
-			finalErr = fmt.Errorf("failed to fetch template spec: %w", err)
-			return
-		}
-
-		state := o.getCurrentState(ctx, obj, templateSpec)
+		state := o.getCurrentState(ctx, obj)
 		o.log(fmt.Sprintf("Current state: %s", state))
 
 		if state == UnknownState {
-			if err := o.rollBack(obj, templateSpecFetcher); err != nil {
+			if err := o.rollBack(obj); err != nil {
 				o.log(fmt.Sprintf("Error rolling back: %s", err))
 				finalErr = fmt.Errorf("failed to rollback from unknown state: %w", err)
 				return
@@ -98,7 +90,7 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 			case <-ctx.Done():
 				// Context was cancelled, perform rollback
 				o.log("Context cancelled, rolling back current object")
-				if err := o.rollBack(obj, templateSpecFetcher); err != nil {
+				if err := o.rollBack(obj); err != nil {
 					o.log(fmt.Sprintf("Error rolling back after context cancellation: %s", err))
 					finalErr = fmt.Errorf("failed to rollback after context cancellation: %w", err)
 					return
@@ -116,7 +108,7 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 				if err := nextTransition.Execute(ctx, obj, templateSpec, o.Remote); err != nil {
 					o.log(fmt.Sprintf("Error executing transition: %s", err))
 					// Attempt rollback on execution error
-					if rbErr := o.rollBack(obj, templateSpecFetcher); rbErr != nil {
+					if rbErr := o.rollBack(obj); rbErr != nil {
 						o.log(fmt.Sprintf("Error rolling back after failed execution: %s", rbErr))
 						finalErr = fmt.Errorf("failed to rollback after execution error: %w", rbErr)
 						return
@@ -129,13 +121,13 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 				if nextTransition.To() == PreflightChecksPassed {
 					state = PreflightChecksPassed
 				} else {
-					state = o.getCurrentState(ctx, obj, templateSpec)
+					state = o.getCurrentState(ctx, obj)
 				}
 
 				o.log(fmt.Sprintf("Current state: %s", state))
 
 				if state == UnknownState {
-					if err := o.rollBack(obj, templateSpecFetcher); err != nil {
+					if err := o.rollBack(obj); err != nil {
 						o.log(fmt.Sprintf("Error rolling back: %s", err))
 						finalErr = fmt.Errorf("failed to rollback from unknown state during transition: %w", err)
 						return
@@ -162,8 +154,16 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 	}
 }
 
-func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, templateSpec *v1.PodTemplateSpec) State {
-	if !workload.IsObjectLabeledForInstrumentation(obj) {
+func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) State {
+	sources, err := o.Client.OdigosClient.Sources(obj.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: v1alpha1.GetSourceLabelSelector(obj).String(),
+	})
+	if err != nil {
+		o.log(fmt.Sprintf("Error listing sources: %s", err))
+		return UnknownState
+	}
+
+	if sources == nil || len(sources.Items) == 0 {
 		return NotInstrumentedState
 	}
 
@@ -171,7 +171,6 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 	kind := workload.WorkloadKindFromClientObject(obj)
 	icName := workload.CalculateWorkloadRuntimeObjectName(name, kind)
 	var describe *source.SourceAnalyze
-	var err error
 	if o.Remote {
 		describe, err = remote.DescribeSource(ctx, o.Client, o.OdigosNamespace, string(kind), obj.GetNamespace(), name)
 		if err != nil {
@@ -211,9 +210,8 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 		}
 	}
 
-	var lang common.ProgrammingLanguage
 	if !o.Remote {
-		ia, err := o.Client.OdigosClient.InstrumentedApplications(obj.GetNamespace()).Get(ctx, icName, metav1.GetOptions{})
+		ic, err := o.Client.OdigosClient.InstrumentationConfigs(obj.GetNamespace()).Get(ctx, icName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return LangDetectionInProgress
@@ -223,15 +221,14 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 			return UnknownState
 		}
 
-		if ia.Spec.RuntimeDetails == nil || len(ia.Spec.RuntimeDetails) == 0 {
+		if ic.Status.RuntimeDetailsByContainer == nil || len(ic.Status.RuntimeDetailsByContainer) == 0 {
 			return LangDetectionInProgress
 		}
 
 		langFound := false
-		for _, rd := range ia.Spec.RuntimeDetails {
+		for _, rd := range ic.Status.RuntimeDetailsByContainer {
 			if rd.Language != common.UnknownProgrammingLanguage && rd.Language != common.IgnoredProgrammingLanguage {
 				langFound = true
-				lang = rd.Language
 				break
 			}
 		}
@@ -241,11 +238,11 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 			return UnknownState
 		}
 	} else {
-		if describe.InstrumentedApplication.Created.Value == nil {
+		if describe.InstrumentationConfig.Created.Value == nil {
 			return LangDetectionInProgress
 		}
 
-		iaCreated, ok := describe.InstrumentedApplication.Created.Value.(string)
+		iaCreated, ok := describe.InstrumentationConfig.Created.Value.(string)
 		if !ok {
 			o.log("Failed to get instrumented application status, skipping")
 			return UnknownState
@@ -255,12 +252,12 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 			return LangDetectionInProgress
 		}
 
-		if len(describe.InstrumentedApplication.Containers) == 0 {
+		if len(describe.InstrumentationConfig.Containers) == 0 {
 			return LangDetectionInProgress
 		}
 
 		langFound := false
-		for _, c := range describe.InstrumentedApplication.Containers {
+		for _, c := range describe.InstrumentationConfig.Containers {
 			langStr, ok := c.Language.Value.(string)
 			if !ok {
 				continue
@@ -269,7 +266,6 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 			langParsed := common.ProgrammingLanguage(langStr)
 			if langParsed != common.UnknownProgrammingLanguage && langParsed != common.IgnoredProgrammingLanguage {
 				langFound = true
-				lang = langParsed
 				break
 			}
 		}
@@ -278,23 +274,6 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object, t
 			o.log("Failed to deetect language, skipping")
 			return UnknownState
 		}
-	}
-
-	instDeviceFound := false
-	for _, c := range templateSpec.Spec.Containers {
-		if c.Resources.Limits != nil {
-			for val := range c.Resources.Limits {
-				if strings.HasPrefix(val.String(), common.OdigosResourceNamespace) {
-					instDeviceFound = true
-					break
-				}
-			}
-		}
-	}
-
-	if !instDeviceFound {
-		o.log("Language detected: " + string(lang))
-		return LangDetectedState
 	}
 
 	instrumented, err := k8sutils.VerifyAllPodsAreInstrumented(ctx, o.Client, obj)

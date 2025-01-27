@@ -33,6 +33,5 @@ var allTransitions = []Transition{
 	&PreflightCheck{},
 	&RequestLangDetection{},
 	&WaitForLangDetection{},
-	&InstrumentationStarted{},
 	&InstrumentationEnded{},
 }

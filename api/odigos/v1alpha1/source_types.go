@@ -102,6 +102,28 @@ type SourceSelector struct {
 	// - If SourceSelector is nil, the destination receives data from all sources.
 }
 
+// GetSourceLabelSelector returns a label selector that can be used to find the Source object
+func GetSourceLabelSelector(obj client.Object) labels.Selector {
+	namespace := obj.GetNamespace()
+	if len(namespace) == 0 && obj.GetObjectKind().GroupVersionKind().Kind == string(workload.WorkloadKindNamespace) {
+		namespace = obj.GetName()
+	}
+
+	if obj.GetObjectKind().GroupVersionKind().Kind != string(workload.WorkloadKindNamespace) {
+		return labels.SelectorFromSet(labels.Set{
+			k8sconsts.WorkloadNameLabel:      obj.GetName(),
+			k8sconsts.WorkloadNamespaceLabel: namespace,
+			k8sconsts.WorkloadKindLabel:      obj.GetObjectKind().GroupVersionKind().Kind,
+		})
+	}
+
+	return labels.SelectorFromSet(labels.Set{
+		k8sconsts.WorkloadNameLabel:      namespace,
+		k8sconsts.WorkloadNamespaceLabel: namespace,
+		k8sconsts.WorkloadKindLabel:      string(workload.WorkloadKindNamespace),
+	})
+}
+
 // GetSources returns a WorkloadSources listing the Workload and Namespace Source
 // that currently apply to the given object. In theory, this should only ever return at most
 // 1 Namespace and/or 1 Workload Source for an object. If more are found, an error is returned.
@@ -114,13 +136,9 @@ func GetSources(ctx context.Context, kubeClient client.Client, obj client.Object
 		namespace = obj.GetName()
 	}
 
+	selector := GetSourceLabelSelector(obj)
 	if obj.GetObjectKind().GroupVersionKind().Kind != string(workload.WorkloadKindNamespace) {
 		sourceList := SourceList{}
-		selector := labels.SelectorFromSet(labels.Set{
-			k8sconsts.WorkloadNameLabel:      obj.GetName(),
-			k8sconsts.WorkloadNamespaceLabel: namespace,
-			k8sconsts.WorkloadKindLabel:      obj.GetObjectKind().GroupVersionKind().Kind,
-		})
 		err := kubeClient.List(ctx, &sourceList, &client.ListOptions{LabelSelector: selector}, client.InNamespace(namespace))
 		if err != nil {
 			return nil, err
@@ -134,12 +152,7 @@ func GetSources(ctx context.Context, kubeClient client.Client, obj client.Object
 	}
 
 	namespaceSourceList := SourceList{}
-	namespaceSelector := labels.SelectorFromSet(labels.Set{
-		k8sconsts.WorkloadNameLabel:      namespace,
-		k8sconsts.WorkloadNamespaceLabel: namespace,
-		k8sconsts.WorkloadKindLabel:      string(workload.WorkloadKindNamespace),
-	})
-	err = kubeClient.List(ctx, &namespaceSourceList, &client.ListOptions{LabelSelector: namespaceSelector}, client.InNamespace(namespace))
+	err = kubeClient.List(ctx, &namespaceSourceList, &client.ListOptions{LabelSelector: selector}, client.InNamespace(namespace))
 	if err != nil {
 		return nil, err
 	}

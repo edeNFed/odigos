@@ -2,10 +2,10 @@ package lifecycle
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/odigos-io/odigos/common/consts"
-	appsv1 "k8s.io/api/apps/v1"
+	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
+	"github.com/odigos-io/odigos/k8sutils/pkg/workload"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,27 +26,19 @@ func (r *RequestLangDetection) To() State {
 }
 
 func (r *RequestLangDetection) Execute(ctx context.Context, obj client.Object, templateSpec *v1.PodTemplateSpec, isRemote bool) error {
-	labels := obj.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[consts.OdigosInstrumentationLabel] = consts.InstrumentationEnabled
-	obj.SetLabels(labels)
-
-	switch obj.(type) {
-	case *appsv1.Deployment:
-		deployment := obj.(*appsv1.Deployment)
-		_, err := r.client.AppsV1().Deployments(deployment.Namespace).Update(ctx, deployment, metav1.UpdateOptions{})
-		return err
-	case *appsv1.StatefulSet:
-		statefulSet := obj.(*appsv1.StatefulSet)
-		_, err := r.client.AppsV1().StatefulSets(statefulSet.Namespace).Update(ctx, statefulSet, metav1.UpdateOptions{})
-		return err
-	case *appsv1.DaemonSet:
-		daemonSet := obj.(*appsv1.DaemonSet)
-		_, err := r.client.AppsV1().DaemonSets(daemonSet.Namespace).Update(ctx, daemonSet, metav1.UpdateOptions{})
-		return err
+	newSource := &v1alpha1.Source{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "source-",
+		},
+		Spec: v1alpha1.SourceSpec{
+			Workload: workload.PodWorkload{
+				Namespace: obj.GetNamespace(),
+				Name:      obj.GetName(),
+				Kind:      workload.WorkloadKind(obj.GetObjectKind().GroupVersionKind().Kind),
+			},
+		},
 	}
 
-	return fmt.Errorf("unsupported object type: %T", obj)
+	_, err := r.client.OdigosClient.Sources(newSource.GetNamespace()).Create(ctx, newSource, metav1.CreateOptions{})
+	return err
 }

@@ -9,17 +9,19 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/odigos-io/odigos/k8sutils/pkg/describe/odigos"
+
 	"github.com/odigos-io/odigos/k8sutils/pkg/describe/source"
 
 	"github.com/odigos-io/odigos/cli/pkg/kube"
 )
 
-func GetDestinationsEndpoint() string {
-	return fmt.Sprintf("http://localhost:%s/api/destinations", DefaultLocalPort)
+func GetDescribeOdigosEndpoint() string {
+	return fmt.Sprintf("http://localhost:%s/describe/odigos", DefaultLocalPort)
 }
 
 func GetNumberOfDestinations(ctx context.Context, client *kube.Client) (int, error) {
-	url, err := url.Parse(GetDestinationsEndpoint())
+	url, err := url.Parse(GetDescribeOdigosEndpoint())
 	if err != nil {
 		return 0, err
 	}
@@ -27,6 +29,7 @@ func GetNumberOfDestinations(ctx context.Context, client *kube.Client) (int, err
 	req := http.Request{
 		Method: http.MethodGet,
 		URL:    url,
+		Header: http.Header{"Accept": []string{"application/json"}},
 	}
 
 	resp, err := http.DefaultClient.Do(&req)
@@ -41,12 +44,12 @@ func GetNumberOfDestinations(ctx context.Context, client *kube.Client) (int, err
 	}
 
 	// Parse to array of strings
-	var destinations []interface{}
-	if err := json.Unmarshal(respBody, &destinations); err != nil {
+	var describeObj odigos.OdigosAnalyze
+	if err := json.Unmarshal(respBody, &describeObj); err != nil {
 		return 0, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
-	return len(destinations), nil
+	return describeObj.NumberOfDestinations, nil
 }
 
 func GetDescribeSourceEndpoint(workloadKind string, workloadNs string, workloadName string) string {
