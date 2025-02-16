@@ -195,17 +195,7 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 			return UnknownState
 		}
 	} else {
-		if describe.InstrumentationConfig.Created.Value == nil {
-			return LangDetectionInProgress
-		}
-
-		instConfigStr, ok := describe.InstrumentationConfig.Created.Value.(string)
-		if !ok {
-			o.log("Failed to get instrumentation config status, skipping")
-			return UnknownState
-		}
-
-		if instConfigStr != "created" {
+		if describe.RuntimeInfo == nil || len(describe.RuntimeInfo.Containers) == 0 {
 			return LangDetectionInProgress
 		}
 	}
@@ -238,26 +228,16 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 			return UnknownState
 		}
 	} else {
-		if describe.InstrumentationConfig.Created.Value == nil {
+		if describe.RuntimeInfo == nil {
 			return LangDetectionInProgress
 		}
 
-		iaCreated, ok := describe.InstrumentationConfig.Created.Value.(string)
-		if !ok {
-			o.log("Failed to get instrumented application status, skipping")
-			return UnknownState
-		}
-
-		if iaCreated != "created" {
-			return LangDetectionInProgress
-		}
-
-		if len(describe.InstrumentationConfig.Containers) == 0 {
+		if len(describe.RuntimeInfo.Containers) == 0 {
 			return LangDetectionInProgress
 		}
 
 		langFound := false
-		for _, c := range describe.InstrumentationConfig.Containers {
+		for _, c := range describe.RuntimeInfo.Containers {
 			langStr, ok := c.Language.Value.(string)
 			if !ok {
 				continue

@@ -3,9 +3,9 @@ package lifecycle
 import (
 	"context"
 
-	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
-	"github.com/odigos-io/odigos/k8sutils/pkg/workload"
+	"github.com/odigos-io/odigos/api/k8sconsts"
 
+	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,10 +31,10 @@ func (r *RequestLangDetection) Execute(ctx context.Context, obj client.Object, t
 			GenerateName: "source-",
 		},
 		Spec: v1alpha1.SourceSpec{
-			Workload: workload.PodWorkload{
+			Workload: k8sconsts.PodWorkload{
 				Namespace: obj.GetNamespace(),
 				Name:      obj.GetName(),
-				Kind:      workload.WorkloadKind(obj.GetObjectKind().GroupVersionKind().Kind),
+				Kind:      k8sconsts.WorkloadKind(obj.GetObjectKind().GroupVersionKind().Kind),
 			},
 		},
 	}

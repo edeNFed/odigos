@@ -81,26 +81,16 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 			return false, nil
 		}
 
-		if describe.InstrumentationConfig.Created.Value == nil {
+		if describe.RuntimeInfo == nil {
 			return false, nil
 		}
 
-		iaCreated, ok := describe.InstrumentationConfig.Created.Value.(string)
-		if !ok {
-			w.log("Failed to get instrumented application status, skipping")
-			return false, nil
-		}
-
-		if iaCreated != "created" {
-			return false, nil
-		}
-
-		if len(describe.InstrumentationConfig.Containers) == 0 {
+		if len(describe.RuntimeInfo.Containers) == 0 {
 			return false, nil
 		}
 
 		langFound := false
-		for _, c := range describe.InstrumentationConfig.Containers {
+		for _, c := range describe.RuntimeInfo.Containers {
 			langStr, ok := c.Language.Value.(string)
 			if !ok {
 				continue
