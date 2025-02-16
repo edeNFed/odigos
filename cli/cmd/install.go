@@ -39,6 +39,7 @@ var (
 	userInputIgnoredContainers []string
 	userInputInstallProfiles   []string
 	uiMode                     string
+	centralBackendURL          string
 
 	instrumentorImage string
 	odigletImage      string
@@ -51,9 +52,9 @@ type ResourceCreationFunc func(ctx context.Context, cmd *cobra.Command, client *
 // installCmd represents the install command
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install Odigos",
-	Long: `Install Odigos in your kubernetes cluster.
-This command will install k8s components that will auto-instrument your applications with OpenTelemetry and send traces, metrics and logs to any telemetry backend`,
+	Short: "Install Odigos in your kubernetes cluster.",
+	Long: `This sub command will Install Odigos in your kubernetes cluster.
+It will install k8s components that will auto-instrument your applications with OpenTelemetry and send traces, metrics and logs to any telemetry backend`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 		client := cmdcontext.KubeClientFromContextOrExit(ctx)
@@ -128,6 +129,19 @@ This command will install k8s components that will auto-instrument your applicat
 
 		fmt.Printf("\n\u001B[32mSUCCESS:\u001B[0m Odigos installed.\n")
 	},
+	Example: `
+# Install Odigos open-source in your cluster.
+odigos install
+
+# Install Odigos cloud in your cluster.
+odigos install --api-key <your-api-key>
+
+# Install Odigos cloud in a specific cluster
+odigos install --kubeconfig <path-to-kubeconfig>
+
+# Install Odigos onprem tier for enterprise users
+odigos install --onprem-token ${ODIGOS_TOKEN} --profile ${YOUR_ENTERPRISE_PROFILE_NAME}
+`,
 }
 
 func arePodsReady(ctx context.Context, client *kube.Client, ns string) func() (bool, error) {
@@ -209,6 +223,15 @@ func createOdigosConfig(odigosTier common.OdigosTier) common.OdigosConfiguration
 		selectedProfiles = append(selectedProfiles, common.ProfileName(profile))
 	}
 
+	if openshiftEnabled {
+		if imagePrefix == "" {
+			imagePrefix = k8sconsts.RedHatImagePrefix
+		}
+		odigletImage = k8sconsts.OdigletImageUBI9
+		instrumentorImage = k8sconsts.InstrumentorImageUBI9
+		autoScalerImage = k8sconsts.AutoScalerImageUBI9
+	}
+
 	return common.OdigosConfiguration{
 		ConfigVersion:             1, // config version starts at 1 and incremented on every config change
 		TelemetryEnabled:          telemetryEnabled,
@@ -223,6 +246,7 @@ func createOdigosConfig(odigosTier common.OdigosTier) common.OdigosConfiguration
 		AutoscalerImage:           autoScalerImage,
 		Profiles:                  selectedProfiles,
 		UiMode:                    common.UiMode(uiMode),
+		CentralBackendURL:         centralBackendURL,
 	}
 }
 
@@ -243,7 +267,7 @@ func init() {
 	installCmd.Flags().StringVarP(&odigosOnPremToken, "onprem-token", "", "", "authentication token for odigos enterprise on-premises")
 	installCmd.Flags().BoolVar(&skipWait, "nowait", false, "skip waiting for odigos pods to be ready")
 	installCmd.Flags().BoolVar(&telemetryEnabled, "telemetry", true, "send general telemetry regarding Odigos usage")
-	installCmd.Flags().BoolVar(&openshiftEnabled, "openshift", false, "configure selinux on openshift nodes")
+	installCmd.Flags().BoolVar(&openshiftEnabled, "openshift", false, "configure requirements for OpenShift: required selinux settings, RBAC roles, and will use OpenShift certified images (if --image-prefix is not set)")
 	installCmd.Flags().BoolVar(&skipWebhookIssuerCreation, "skip-webhook-issuer-creation", false, "Skip creating the Issuer and Certificate for the Instrumentor pod webhook if cert-manager is installed.")
 	installCmd.Flags().StringVar(&odigletImage, "odiglet-image", "", "odiglet container image name")
 	installCmd.Flags().StringVar(&instrumentorImage, "instrumentor-image", "keyval/odigos-instrumentor", "instrumentor container image name")
@@ -254,6 +278,7 @@ func init() {
 	installCmd.Flags().StringSliceVar(&userInputIgnoredContainers, "ignore-container", k8sconsts.DefaultIgnoredContainers, "container names to exclude from instrumentation (useful for sidecar container)")
 	installCmd.Flags().StringSliceVar(&userInputInstallProfiles, "profile", []string{}, "install preset profiles with a specific configuration")
 	installCmd.Flags().StringVarP(&uiMode, "ui-mode", "", string(common.NormalUiMode), "set the UI mode (one-of: normal, readonly)")
+	installCmd.Flags().StringVar(&centralBackendURL, "central-backend-url", "", "URL for centralized Odigos backend")
 
 	if OdigosVersion != "" {
 		versionFlag = OdigosVersion

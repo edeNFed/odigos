@@ -81,11 +81,14 @@
             "cli/odigos_describe",
             "cli/odigos_diagnose",
             "cli/odigos_install",
+            "cli/odigos_pro",
             "cli/odigos_profile",
             "cli/odigos_ui",
             "cli/odigos_uninstall",
             "cli/odigos_upgrade",
-            "cli/odigos_version"
+            "cli/odigos_version",
+            "cli/odigos_sources",
+            "cli/odigos_config"
           ]
         },
         {
@@ -182,7 +185,8 @@
                 "pipeline/actions/attributes/addclusterinfo",
                 "pipeline/actions/attributes/deleteattribute",
                 "pipeline/actions/attributes/renameattribute",
-                "pipeline/actions/attributes/piimasking"
+                "pipeline/actions/attributes/piimasking",
+                "pipeline/actions/attributes/k8sattributes"
               ]
             },
             {
@@ -231,7 +235,9 @@
             "backends/groundcover",
             "backends/honeycomb",
             "backends/hyperdx",
+            "backends/instana",
             "backends/jaeger",
+            "backends/kafka",
             "backends/kloudmate",
             "backends/last9",
             "backends/lightstep",

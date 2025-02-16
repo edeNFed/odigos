@@ -3,16 +3,14 @@ package workload
 import (
 	"context"
 	"errors"
-	"strings"
-
-	"github.com/odigos-io/odigos/common"
 
 	"github.com/odigos-io/odigos/common/consts"
 
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type Workload interface {
@@ -62,18 +60,7 @@ func ObjectToWorkload(obj client.Object) (Workload, error) {
 	}
 }
 
-func IsContainerInstrumented(c *corev1.Container) bool {
-	if c != nil && c.Resources.Limits != nil {
-		for val := range c.Resources.Limits {
-			if strings.HasPrefix(val.String(), common.OdigosResourceNamespace) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
+// Deprecated: this should only be used for backward compatibility migration.
 func IsObjectLabeledForInstrumentation(obj client.Object) bool {
 	labels := obj.GetLabels()
 	if labels == nil {
@@ -88,6 +75,32 @@ func IsObjectLabeledForInstrumentation(obj client.Object) bool {
 	return val == consts.InstrumentationEnabled
 }
 
+// Deprecated: this should only be used for backward compatibility migration.
+func IsWorkloadInstrumentationEffectiveEnabled(ctx context.Context, kubeClient client.Client, obj client.Object) (bool, error) {
+	// if the object itself is labeled, we will use that value
+	workloadLabels := obj.GetLabels()
+	if val, exists := workloadLabels[consts.OdigosInstrumentationLabel]; exists {
+		return val == consts.InstrumentationEnabled, nil
+	}
+
+	// we will get here if the workload instrumentation label is not set.
+	// no label means inherit the instrumentation value from namespace.
+	var ns corev1.Namespace
+	err := kubeClient.Get(ctx, client.ObjectKey{Name: obj.GetNamespace()}, &ns)
+	if err != nil {
+		logger := log.FromContext(ctx)
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+
+		logger.Error(err, "error fetching namespace object")
+		return false, err
+	}
+
+	return IsObjectLabeledForInstrumentation(&ns), nil
+}
+
+// Deprecated: this should only be used for backward compatibility migration.
 func IsInstrumentationDisabledExplicitly(obj client.Object) bool {
 	labels := obj.GetLabels()
 	if labels != nil {
@@ -98,45 +111,4 @@ func IsInstrumentationDisabledExplicitly(obj client.Object) bool {
 	}
 
 	return false
-}
-
-func GetWorkloadObject(ctx context.Context, objectKey client.ObjectKey, kind WorkloadKind, kubeClient client.Client) (metav1.Object, error) {
-	switch kind {
-	case WorkloadKindDeployment:
-		var deployment v1.Deployment
-		err := kubeClient.Get(ctx, objectKey, &deployment)
-		if err != nil {
-			return nil, err
-		}
-		return &deployment, nil
-
-	case WorkloadKindStatefulSet:
-		var statefulSet v1.StatefulSet
-		err := kubeClient.Get(ctx, objectKey, &statefulSet)
-		if err != nil {
-			return nil, err
-		}
-		return &statefulSet, nil
-
-	case WorkloadKindDaemonSet:
-		var daemonSet v1.DaemonSet
-		err := kubeClient.Get(ctx, objectKey, &daemonSet)
-		if err != nil {
-			return nil, err
-		}
-		return &daemonSet, nil
-
-	default:
-		return nil, errors.New("failed to get workload object for kind: " + string(kind))
-	}
-}
-
-func ExtractServiceNameFromAnnotations(annotations map[string]string, defaultName string) string {
-	if annotations == nil {
-		return defaultName
-	}
-	if reportedName, exists := annotations[consts.OdigosReportedNameAnnotation]; exists && reportedName != "" {
-		return reportedName
-	}
-	return defaultName
 }

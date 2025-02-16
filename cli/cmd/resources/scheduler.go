@@ -75,7 +75,7 @@ func NewSchedulerRole(ns string) *rbacv1.Role {
 				APIGroups:     []string{""},
 				Resources:     []string{"configmaps"},
 				ResourceNames: []string{consts.OdigosEffectiveConfigName, k8sconsts.OdigosDeploymentConfigMapName},
-				Verbs:         []string{"patch", "create"},
+				Verbs:         []string{"patch", "create", "update"},
 			},
 			{ // Needed because the scheduler is managing the collectorsgroups
 				APIGroups: []string{"odigos.io"},
@@ -96,6 +96,11 @@ func NewSchedulerRole(ns string) *rbacv1.Role {
 				APIGroups: []string{"odigos.io"},
 				Resources: []string{"processors", "instrumentationrules"},
 				Verbs:     []string{"get", "list", "watch", "patch", "delete", "create"},
+			},
+			{ // read odigos pro token
+				APIGroups: []string{""},
+				Resources: []string{"secrets"},
+				Verbs:     []string{"get", "list", "watch"},
 			},
 		},
 	}
@@ -168,7 +173,7 @@ func NewSchedulerClusterRoleBinding(ns string) *rbacv1.ClusterRoleBinding {
 	}
 }
 
-func NewSchedulerDeployment(ns string, version string, imagePrefix string) *appsv1.Deployment {
+func NewSchedulerDeployment(ns string, version string, imagePrefix string, imageName string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
@@ -201,7 +206,7 @@ func NewSchedulerDeployment(ns string, version string, imagePrefix string) *apps
 					Containers: []corev1.Container{
 						{
 							Name:  k8sconsts.SchedulerContainerName,
-							Image: containers.GetImageName(imagePrefix, k8sconsts.SchedulerImage, version),
+							Image: containers.GetImageName(imagePrefix, imageName, version),
 							Command: []string{
 								"/app",
 							},
@@ -311,6 +316,11 @@ func NewSchedulerResourceManager(client *kube.Client, ns string, config *common.
 func (a *schedulerResourceManager) Name() string { return "Scheduler" }
 
 func (a *schedulerResourceManager) InstallFromScratch(ctx context.Context) error {
+	imageName := k8sconsts.SchedulerImage
+	if a.config.OpenshiftEnabled {
+		imageName = k8sconsts.SchedulerImageUBI9
+	}
+
 	resources := []kube.Object{
 		NewSchedulerServiceAccount(a.ns),
 		NewSchedulerLeaderElectionRoleBinding(a.ns),
@@ -318,7 +328,7 @@ func (a *schedulerResourceManager) InstallFromScratch(ctx context.Context) error
 		NewSchedulerRoleBinding(a.ns),
 		NewSchedulerClusterRole(),
 		NewSchedulerClusterRoleBinding(a.ns),
-		NewSchedulerDeployment(a.ns, a.odigosVersion, a.config.ImagePrefix),
+		NewSchedulerDeployment(a.ns, a.odigosVersion, a.config.ImagePrefix, imageName),
 	}
 	return a.client.ApplyResources(ctx, a.config.ConfigVersion, resources)
 }

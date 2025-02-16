@@ -5,19 +5,27 @@ import (
 )
 
 const (
-	CurrentNamespaceEnvVar       = "CURRENT_NS"
-	OdigosVersionEnvVarName      = "ODIGOS_VERSION"
-	OdigosTierEnvVarName         = "ODIGOS_TIER"
-	DefaultOdigosNamespace       = "odigos-system"
-	OdigosConfigurationName      = "odigos-config"
-	OdigosEffectiveConfigName    = "effective-config"
-	OdigosConfigurationFileName  = "config.yaml"
-	OTLPPort                     = 4317
-	OTLPHttpPort                 = 4318
-	PprofOdigosPort              = 6060
-	OdigosInstrumentationLabel   = "odigos-instrumentation"
-	InstrumentationEnabled       = "enabled"
-	InstrumentationDisabled      = "disabled"
+	CurrentNamespaceEnvVar      = "CURRENT_NS"
+	OdigosVersionEnvVarName     = "ODIGOS_VERSION"
+	OdigosTierEnvVarName        = "ODIGOS_TIER"
+	DefaultOdigosNamespace      = "odigos-system"
+	OdigosConfigurationName     = "odigos-config"
+	OdigosEffectiveConfigName   = "effective-config"
+	OdigosConfigurationFileName = "config.yaml"
+	OTLPPort                    = 4317
+	OTLPHttpPort                = 4318
+	PprofOdigosPort             = 6060
+
+	// Deprecated: Sources are used to mark workloads for instrumentation.
+	OdigosInstrumentationLabel = "odigos-instrumentation"
+
+	// Deprecated: Sources are used to mark workloads for instrumentation.
+	InstrumentationEnabled = "enabled"
+
+	// Deprecated: Sources are used to mark workloads for instrumentation.
+	InstrumentationDisabled = "disabled"
+
+	// Deprecated: reported name is set via the Source CR.
 	OdigosReportedNameAnnotation = "odigos.io/reported-name"
 	RolloutTriggerAnnotation     = "rollout-trigger"
 
@@ -43,4 +51,14 @@ const (
 
 var (
 	ErrorPodsNotFound = errors.New("could not find a ready pod")
+)
+
+// Agents related consts
+var (
+	OtelExporterEndpointEnvName = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	// Python related ones
+	OtelPythonConfiguratorEnvName  = "OTEL_PYTHON_CONFIGURATOR"
+	OtelPythonConfiguratorEnvValue = "odigos-python-configurator"
+	OpampServerHostEnvName         = "ODIGOS_OPAMP_SERVER_HOST"
+	OpAMPPort                      = 4320
 )

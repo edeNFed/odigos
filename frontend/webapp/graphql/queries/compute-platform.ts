@@ -45,12 +45,14 @@ export const GET_SOURCES = gql`
           name
           kind
           selected
-          reportedName
+          otelServiceName
           containers {
             containerName
             language
             runtimeVersion
-            otherAgent
+            instrumented
+            instrumentationMessage
+            otelDistroName
           }
           conditions {
             status
@@ -94,9 +96,11 @@ export const GET_DESTINATIONS = gql`
           }
         }
         conditions {
-          type
           status
+          type
+          reason
           message
+          lastTransitionTime
         }
       }
     }
