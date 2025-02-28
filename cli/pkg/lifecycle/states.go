@@ -155,22 +155,11 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 }
 
 func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) State {
-	sources, err := o.Client.OdigosClient.Sources(obj.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: v1alpha1.GetSourceLabelSelector(obj).String(),
-	})
-	if err != nil {
-		o.log(fmt.Sprintf("Error listing sources: %s", err))
-		return UnknownState
-	}
-
-	if sources == nil || len(sources.Items) == 0 {
-		return NotInstrumentedState
-	}
-
 	name := obj.GetName()
 	kind := workload.WorkloadKindFromClientObject(obj)
 	icName := workload.CalculateWorkloadRuntimeObjectName(name, kind)
 	var describe *source.SourceAnalyze
+	var err error
 	if o.Remote {
 		describe, err = remote.DescribeSource(ctx, o.Client, o.OdigosNamespace, string(kind), obj.GetNamespace(), name)
 		if err != nil {
@@ -182,10 +171,27 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 			o.log("Describe source returned nil, skipping")
 			return UnknownState
 		}
+
+		if (describe.SourceObjectsAnalysis.Workload == nil || describe.SourceObjectsAnalysis.Workload.Value == "unset") &&
+			(describe.SourceObjectsAnalysis.Namespace == nil || describe.SourceObjectsAnalysis.Namespace.Value == "unset") {
+			return NotInstrumentedState
+		}
 	}
 
 	if !o.Remote {
-		_, err := o.Client.OdigosClient.InstrumentationConfigs(obj.GetNamespace()).Get(ctx, icName, metav1.GetOptions{})
+		sources, err := o.Client.OdigosClient.Sources(obj.GetNamespace()).List(ctx, metav1.ListOptions{
+			LabelSelector: v1alpha1.GetSourceLabelSelector(obj).String(),
+		})
+		if err != nil {
+			o.log(fmt.Sprintf("Error listing sources: %s", err))
+			return UnknownState
+		}
+
+		if sources == nil || len(sources.Items) == 0 {
+			return NotInstrumentedState
+		}
+
+		_, err = o.Client.OdigosClient.InstrumentationConfigs(obj.GetNamespace()).Get(ctx, icName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return LangDetectionInProgress
