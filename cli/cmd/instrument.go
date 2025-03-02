@@ -72,21 +72,18 @@ Odigos CLI and monitor the instrumentation status.`,
 		go func() {
 			<-ch
 			cancel()
-			if uiClient != nil {
-				uiClient.Close()
-			}
 		}()
 
 		excludedNs, err := readFileLines(cmd.Flag(excludeNamespacesFileFlag).Value.String())
 		if err != nil {
-			fmt.Printf("\033[31mERROR\033[0m Cannot read exclude-namespaces-file: %s\n", err)
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot read exclude-namespaces-file: %s\n", err))
+			return
 		}
 
 		excludedApps, err := readFileLines(cmd.Flag(excludeAppsFileFlag).Value.String())
 		if err != nil {
-			fmt.Printf("\033[31mERROR\033[0m Cannot read exclude-apps-file: %s\n", err)
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot read exclude-apps-file: %s\n", err))
+			return
 		}
 
 		dryRun := cmd.Flag(dryRunFlag).Changed && cmd.Flag(dryRunFlag).Value.String() == "true"
@@ -95,16 +92,16 @@ Odigos CLI and monitor the instrumentation status.`,
 		coolOff, err := time.ParseDuration(coolOffStr)
 		ctx = lifecycle.SetCoolOff(ctx, coolOff)
 		if err != nil {
-			fmt.Printf("\033[31mERROR\033[0m Invalid duration for instrumentation-cool-off: %s\n", err)
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Invalid duration for instrumentation-cool-off: %s\n", err))
+			return
 		}
 
 		onlyDeployment := cmd.Flag(onlyDeploymentFlag).Value.String()
 		onlyNamespace := cmd.Flag(onlyNamespaceFlag).Value.String()
 
 		if (onlyDeployment != "" && onlyNamespace == "") || (onlyDeployment == "" && onlyNamespace != "") {
-			fmt.Printf("\033[31mERROR\033[0m --only-deployment and --only-namespace must be set together\n")
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m --only-deployment and --only-namespace must be set together\n"))
+			return
 		}
 
 		fmt.Printf("About to instrument with Odigos\n")
@@ -124,23 +121,23 @@ Odigos CLI and monitor the instrumentation status.`,
 		if isRemote {
 			uiClient, err = remote.NewUIClient(client, ctx)
 			if err != nil {
-				fmt.Printf("\033[31mERROR\033[0m Cannot create remote UI client: %s\n", err)
-				os.Exit(1)
+				printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot create remote UI client: %s\n", err))
+				return
 			}
 
 			fmt.Println("Flag --remote is set, starting port-forward to UI pod ...")
 			go func() {
 				if err := uiClient.Start(); err != nil {
-					fmt.Printf("\033[31mERROR\033[0m Cannot start remote UI client: %s\n", err)
-					os.Exit(1)
+					printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot start remote UI client: %s\n", err))
+					return
 				}
 			}()
 
 			<-uiClient.Ready()
 			port, err := uiClient.DiscoverLocalPort()
 			if err != nil {
-				fmt.Printf("\033[31mERROR\033[0m Cannot discover local port for UI client: %s\n", err)
-				os.Exit(1)
+				printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot discover local port for UI client: %s\n", err))
+				return
 			}
 			fmt.Printf("Remote client is using local port %s\n", port)
 		}
@@ -157,15 +154,15 @@ func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, exc
 	odigosNs, err := resources.GetOdigosNamespace(client, ctx)
 	systemNs[odigosNs] = struct{}{}
 	if err != nil {
-		fmt.Printf("\033[31mERROR\033[0m Cannot get Odigos namespace: %s\n", err)
-		os.Exit(1)
+		printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot get Odigos namespace: %s\n", err))
+		return
 	}
 
 	if onlyDeployment != "" {
 		orchestrator, err := lifecycle.NewOrchestrator(client, ctx, remote)
 		if err != nil {
-			fmt.Printf("\033[31mERROR\033[0m Cannot create orchestrator: %s\n", err)
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot create orchestrator: %s\n", err))
+			return
 		}
 
 		dep, err := client.AppsV1().Deployments(onlyNamespace).Get(ctx, onlyDeployment, metav1.GetOptions{})
@@ -176,8 +173,8 @@ func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, exc
 			Kind:       "Deployment",
 		}
 		if err != nil {
-			fmt.Printf("\033[31mERROR\033[0m Cannot get deployment %s in namespace %s: %s\n", onlyDeployment, onlyNamespace, err)
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot get deployment %s in namespace %s: %s\n", onlyDeployment, onlyNamespace, err))
+			return
 		}
 
 		if dryRun {
@@ -193,22 +190,22 @@ func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, exc
 			return &dep.Spec.Template, nil
 		})
 		if err != nil {
-			fmt.Printf("\033[31mERROR\033[0m Failed to instrument deployment: %s\n", err)
-			os.Exit(1)
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Failed to instrument deployment: %s\n", err))
+			return
 		}
 		return
 	}
 
 	nsList, err := client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		fmt.Printf("\033[31mERROR\033[0m Cannot list namespaces: %s\n", err)
-		os.Exit(1)
+		printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot list namespaces: %s\n", err))
+		return
 	}
 
 	orchestrator, err := lifecycle.NewOrchestrator(client, ctx, remote)
 	if err != nil {
-		fmt.Printf("\033[31mERROR\033[0m Cannot create orchestrator: %s\n", err)
-		os.Exit(1)
+		printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Cannot create orchestrator: %s\n", err))
+		return
 	}
 
 	for _, ns := range nsList.Items {
@@ -333,4 +330,13 @@ func sliceToMap(slice []string) map[string]struct{} {
 		m[s] = struct{}{}
 	}
 	return m
+}
+
+func printFatalError(err error, str string) {
+	if errors.Is(err, context.Canceled) {
+		return
+	}
+
+	fmt.Print(str)
+	os.Exit(1)
 }

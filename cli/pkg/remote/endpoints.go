@@ -56,14 +56,27 @@ func getCreateSourceEndpoint(workloadKind string, workloadNs string, workloadNam
 	return fmt.Sprintf("http://localhost:%s/source/namespace/%s/kind/%s/name/%s", DefaultLocalPort, workloadNs, strings.ToLower(workloadKind), workloadName)
 }
 
+func DeleteSource(ctx context.Context, workloadKind string, workloadNs string, workloadName string) error {
+	return toggleSource(ctx, workloadKind, workloadNs, workloadName, false)
+}
+
 func CreateSource(ctx context.Context, workloadKind string, workloadNs string, workloadName string) error {
+	return toggleSource(ctx, workloadKind, workloadNs, workloadName, true)
+}
+
+func toggleSource(ctx context.Context, workloadKind string, workloadNs string, workloadName string, enalbed bool) error {
 	url, err := url.Parse(getCreateSourceEndpoint(workloadKind, workloadNs, workloadName))
 	if err != nil {
 		return err
 	}
 
+	method := http.MethodPost
+	if !enalbed {
+		method = http.MethodDelete
+	}
+
 	req := http.Request{
-		Method: http.MethodPost,
+		Method: method,
 		URL:    url,
 		Header: http.Header{"Accept": []string{"application/json"}},
 	}
@@ -80,7 +93,7 @@ func CreateSource(ctx context.Context, workloadKind string, workloadNs string, w
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to create source: %s", respBody)
+		return fmt.Errorf("failed to toggle source: %s", respBody)
 	}
 
 	return nil

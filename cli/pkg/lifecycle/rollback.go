@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/odigos-io/odigos/cli/pkg/remote"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
@@ -30,22 +32,30 @@ func (o *Orchestrator) rollBack(obj client.Object) error {
 	ctx := context.Background()
 
 	o.log("Rolling back changes to pods")
-	source, err := getSource(ctx, o.Client, obj)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			o.log("No changes made by Odigos, skipping rollback")
-			return nil
+	if !o.Remote {
+		source, err := getSource(ctx, o.Client, obj)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				o.log("No changes made by Odigos, skipping rollback")
+				return nil
+			}
+			return err
 		}
-		return err
+
+		err = o.Client.OdigosClient.Sources(obj.GetNamespace()).Delete(ctx, source.GetName(), metav1.DeleteOptions{})
+		if err != nil {
+			o.log("Error deleting source")
+			return err
+		}
+	} else {
+		err := remote.DeleteSource(ctx, obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName())
+		if err != nil {
+			o.log("Error deleting source")
+			return err
+		}
 	}
 
-	err = o.Client.OdigosClient.Sources(obj.GetNamespace()).Delete(ctx, source.GetName(), metav1.DeleteOptions{})
-	if err != nil {
-		o.log("Error deleting source")
-		return err
-	}
-
-	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (bool, error) {
 		rolloutCompleted, err := utils.VerifyAllPodsAreNOTInstrumented(ctx, o.Client, obj)
 		if err != nil {
 			o.log("Error verifying all pods are not instrumented")
