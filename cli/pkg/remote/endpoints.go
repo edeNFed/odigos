@@ -52,6 +52,40 @@ func GetNumberOfDestinations(ctx context.Context, client *kube.Client) (int, err
 	return describeObj.NumberOfDestinations, nil
 }
 
+func getCreateSourceEndpoint(workloadKind string, workloadNs string, workloadName string) string {
+	return fmt.Sprintf("http://localhost:%s/source/namespace/%s/kind/%s/name/%s", DefaultLocalPort, workloadNs, strings.ToLower(workloadKind), workloadName)
+}
+
+func CreateSource(ctx context.Context, workloadKind string, workloadNs string, workloadName string) error {
+	url, err := url.Parse(getCreateSourceEndpoint(workloadKind, workloadNs, workloadName))
+	if err != nil {
+		return err
+	}
+
+	req := http.Request{
+		Method: http.MethodPost,
+		URL:    url,
+		Header: http.Header{"Accept": []string{"application/json"}},
+	}
+
+	resp, err := http.DefaultClient.Do(&req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to create source: %s", respBody)
+	}
+
+	return nil
+}
+
 func GetDescribeSourceEndpoint(workloadKind string, workloadNs string, workloadName string) string {
 	return fmt.Sprintf("http://localhost:%s/describe/source/namespace/%s/kind/%s/name/%s", DefaultLocalPort, workloadNs, strings.ToLower(workloadKind), workloadName)
 }
