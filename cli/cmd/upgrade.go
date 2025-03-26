@@ -11,9 +11,12 @@ import (
 	"github.com/odigos-io/odigos/api/k8sconsts"
 	"github.com/odigos-io/odigos/cli/cmd/resources"
 	"github.com/odigos-io/odigos/cli/cmd/resources/odigospro"
+	"github.com/odigos-io/odigos/cli/cmd/resources/resourcemanager"
 	cmdcontext "github.com/odigos-io/odigos/cli/pkg/cmd_context"
 	"github.com/odigos-io/odigos/cli/pkg/confirm"
 	"github.com/odigos-io/odigos/common"
+	"github.com/odigos-io/odigos/common/consts"
+	"github.com/odigos-io/odigos/k8sutils/pkg/installationmethod"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -95,12 +98,8 @@ and apply any required migrations and adaptations.`,
 
 		config, err := resources.GetCurrentConfig(ctx, client, ns)
 		if err != nil {
-			odigosConfig, err := resources.GetDeprecatedConfig(ctx, client, ns)
-			if err != nil {
-				fmt.Println("Odigos upgrade failed - unable to read the current Odigos configuration.")
-				os.Exit(1)
-			}
-			config = odigosConfig.ToCommonConfig()
+			fmt.Println("Odigos upgrade failed - unable to read the current Odigos configuration.")
+			os.Exit(1)
 		}
 
 		// update the config on upgrade
@@ -109,12 +108,22 @@ and apply any required migrations and adaptations.`,
 			config.UiMode = common.UiMode(uiMode)
 		}
 
+		// Migrate images from prior to registry.odigos.io
+		if config.ImagePrefix == "" {
+			config.ImagePrefix = "registry.odigos.io"
+		}
+
 		currentTier, err := odigospro.GetCurrentOdigosTier(ctx, client, ns)
 		if err != nil {
 			fmt.Println("Odigos cloud login failed - unable to read the current Odigos tier.")
 			os.Exit(1)
 		}
-		resourceManagers := resources.CreateResourceManagers(client, ns, currentTier, nil, config, versionFlag)
+
+		managerOpts := resourcemanager.ManagerOpts{
+			ImageReferences: GetImageReferences(currentTier, openshiftEnabled),
+		}
+
+		resourceManagers := resources.CreateResourceManagers(client, ns, currentTier, nil, config, versionFlag, installationmethod.K8sInstallationMethodOdigosCli, managerOpts)
 		err = resources.ApplyResourceManagers(ctx, client, resourceManagers, operation)
 		if err != nil {
 			fmt.Println("Odigos upgrade failed - unable to apply Odigos resources.")
@@ -135,7 +144,7 @@ odigos upgrade
 func init() {
 	rootCmd.AddCommand(upgradeCmd)
 	upgradeCmd.Flags().Bool("yes", false, "skip the confirmation prompt")
-	updateCmd.Flags().StringVarP(&uiMode, "ui-mode", "", "", "set the UI mode (one-of: normal, readonly)")
+	updateCmd.Flags().StringVarP(&uiMode, consts.UiModeProperty, "", "", "set the UI mode (one-of: normal, readonly)")
 
 	if OdigosVersion != "" {
 		versionFlag = OdigosVersion

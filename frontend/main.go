@@ -28,6 +28,7 @@ import (
 	"github.com/odigos-io/odigos/frontend/kube/watchers"
 	"github.com/odigos-io/odigos/frontend/services"
 	collectormetrics "github.com/odigos-io/odigos/frontend/services/collector_metrics"
+	"github.com/odigos-io/odigos/frontend/services/db"
 	"github.com/odigos-io/odigos/frontend/services/sse"
 	"github.com/odigos-io/odigos/frontend/version"
 	"github.com/odigos-io/odigos/k8sutils/pkg/env"
@@ -107,6 +108,7 @@ func startHTTPServer(flags *Flags, odigosMetrics *collectormetrics.OdigosMetrics
 	gqlHandler := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{
 		Resolvers: &graph.Resolver{
 			MetricsConsumer: odigosMetrics,
+			Logger:          logr.FromSlogHandler(slog.Default().Handler()),
 		},
 	}))
 	r.POST("/graphql", func(c *gin.Context) {
@@ -121,7 +123,8 @@ func startHTTPServer(flags *Flags, odigosMetrics *collectormetrics.OdigosMetrics
 	r.POST("/token/update", services.UpdateToken)
 	r.GET("/describe/odigos", services.DescribeOdigos)
 	r.GET("/describe/source/namespace/:namespace/kind/:kind/name/:name", services.DescribeSource)
-
+	r.POST("/source/namespace/:namespace/kind/:kind/name/:name", services.CreateSourceWithAPI)
+	r.DELETE("/source/namespace/:namespace/kind/:kind/name/:name", services.DeleteSourceWithAPI)
 	return r, nil
 }
 
@@ -152,15 +155,21 @@ func startWatchers(ctx context.Context, flags *Flags) error {
 		return fmt.Errorf("error starting Destination watcher: %v", err)
 	}
 
-	err = watchers.StartInstrumentationInstanceWatcher(ctx, "")
-	if err != nil {
-		return fmt.Errorf("error starting InstrumentationInstance watcher: %v", err)
-	}
-
 	return nil
 }
 
 func main() {
+
+	// Initialize SQLite database
+	database, err := db.NewSQLiteDB("/data/data.db")
+	if err != nil {
+		log.Println(err, "Failed to connect to DB") // TODO: Move to fatal once db required
+	}
+	defer database.Close()
+
+	// InitializeDatabaseSchema sets up the initial database schema.
+	db.InitializeDatabaseSchema(database.GetDB())
+
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	flags := parseFlags()
 
@@ -180,7 +189,7 @@ func main() {
 	go common.StartPprofServer(ctx, logr.FromSlogHandler(slog.Default().Handler()))
 
 	// Load destinations data
-	err := destinations.Load()
+	err = destinations.Load()
 	if err != nil {
 		log.Fatalf("Error loading destinations data: %s", err)
 	}

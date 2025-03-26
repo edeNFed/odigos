@@ -21,10 +21,11 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/odigos-io/odigos/common/consts"
 	"github.com/odigos-io/odigos/k8sutils/pkg/env"
-	odigosver "github.com/odigos-io/odigos/k8sutils/pkg/version"
+	"github.com/odigos-io/odigos/k8sutils/pkg/feature"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -44,7 +45,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/version"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -55,7 +55,6 @@ import (
 	odigosv1 "github.com/odigos-io/odigos/api/odigos/v1alpha1"
 	"github.com/odigos-io/odigos/common"
 
-	"github.com/odigos-io/odigos/autoscaler"
 	"github.com/odigos-io/odigos/autoscaler/controllers"
 	"github.com/odigos-io/odigos/autoscaler/controllers/actions"
 	commonconfig "github.com/odigos-io/odigos/autoscaler/controllers/common"
@@ -64,13 +63,15 @@ import (
 
 	//+kubebuilder:scaffold:imports
 
+	googlecloudmetadata "cloud.google.com/go/compute/metadata"
+
 	_ "net/http/pprof"
 )
 
 var (
 	scheme                = runtime.NewScheme()
 	setupLog              = ctrl.Log.WithName("setup")
-	defaultCollectorImage = "keyval/odigos-collector"
+	defaultCollectorImage = "registry.odigos.io/odigos-collector"
 )
 
 func init() {
@@ -99,10 +100,9 @@ func main() {
 	if odigosVersion == "" {
 		flag.StringVar(&odigosVersion, "version", "", "for development purposes only")
 	}
-	// Get k8s version
-	k8sVersion, err := odigosver.GetKubernetesVersion()
+	err := feature.Setup()
 	if err != nil {
-		setupLog.Error(err, "unable to get Kubernetes version, continuing with default oldest supported version")
+		setupLog.Error(err, "unable to get setup feature k8s detection")
 	}
 
 	opts := ctrlzap.Options{
@@ -203,31 +203,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The labaling was for ver 1.0.91, migration is not releavant for old k8s versions which couln't run.
-	// This is the reason we skip it for versions < 1.23 (Also, versions < 1.23 require a non-caching client and API chane)
-	if k8sVersion != nil && k8sVersion.GreaterThan(version.MustParse("v1.23")) {
-		// Use the cached client for versions >= 1.23
-		err = autoscaler.MigrateCollectorsWorkloadToNewLabels(context.Background(), mgr.GetClient(), odigosNs)
-		if err != nil {
-			setupLog.Error(err, "unable to migrate collectors workload to new labels")
-			os.Exit(1)
-		}
-	}
-
-	// The name processor is used to transform device ids injected with the virtual device,
-	// to service names and k8s attributes.
-	// it is not needed for eBPF instrumentation or OpAMP implementations.
-	// at the time of writing (2024-10-22) only dotnet and java native agent are using the name processor.
-	_, disableNameProcessor := os.LookupEnv("DISABLE_NAME_PROCESSOR")
-
 	collectorImage := defaultCollectorImage
 	if collectorImageEnv, ok := os.LookupEnv("ODIGOS_COLLECTOR_IMAGE"); ok {
 		collectorImage = collectorImageEnv
 	}
 
+	// TODO: this should be removed once the hpa logic uses the feature package for its checks
+	k8sVersion := feature.K8sVersion()
+	// this is a workaround because the GKE detector does not respect the timeout configuration for the resource detection processor.
+	// it could lead to long initialization times for the data-collection,
+	// as a workaround we try to understand here if we're on GKE with a timeout of 2 seconds.
+	// TODO: remove this once https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/issues/1026 is resolved.
+	// DO NOT ADD SIMILAR FUNCTIONS FOR OTHER PLATFORMS
+	onGKE := isRunningOnGKE(ctx)
+	if onGKE {
+		setupLog.Info("Running on GKE")
+	}
+
 	commonconfig.ControllerConfig = &controllerconfig.ControllerConfig{
 		K8sVersion:     k8sVersion,
 		CollectorImage: collectorImage,
+		OnGKE:          onGKE,
 	}
 
 	if err = (&controllers.DestinationReconciler{
@@ -241,34 +237,28 @@ func main() {
 	}
 
 	if err = (&controllers.ProcessorReconciler{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		ImagePullSecrets:     imagePullSecrets,
-		OdigosVersion:        odigosVersion,
-		K8sVersion:           k8sVersion,
-		DisableNameProcessor: disableNameProcessor,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		ImagePullSecrets: imagePullSecrets,
+		OdigosVersion:    odigosVersion,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Processor")
 		os.Exit(1)
 	}
 	if err = (&controllers.CollectorsGroupReconciler{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		ImagePullSecrets:     imagePullSecrets,
-		OdigosVersion:        odigosVersion,
-		K8sVersion:           k8sVersion,
-		DisableNameProcessor: disableNameProcessor,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		ImagePullSecrets: imagePullSecrets,
+		OdigosVersion:    odigosVersion,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CollectorsGroup")
 		os.Exit(1)
 	}
 	if err = (&controllers.InstrumentationConfigReconciler{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		ImagePullSecrets:     imagePullSecrets,
-		OdigosVersion:        odigosVersion,
-		K8sVersion:           k8sVersion,
-		DisableNameProcessor: disableNameProcessor,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		ImagePullSecrets: imagePullSecrets,
+		OdigosVersion:    odigosVersion,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "InstrumentationConfig")
 		os.Exit(1)
@@ -325,4 +315,14 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// based on https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/blob/19c4db6ea12211308fbd2cba12cc8665a5b7c890/detectors/gcp/gke.go#L34
+func isRunningOnGKE(ctx context.Context) bool {
+	c := googlecloudmetadata.NewClient(nil)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	_, err := c.InstanceAttributeValueWithContext(ctx, "cluster-location")
+	return err == nil
 }

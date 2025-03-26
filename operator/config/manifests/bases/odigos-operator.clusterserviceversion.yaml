@@ -1,0 +1,131 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[{"apiVersion":"operator.odigos.io/v1alpha1", "kind":"Odigos",
+      "metadata":{"name":"odigos","namespace":"odigos-operator-system"}, "spec":{"version":"v1.0.164"}}]'
+    capabilities: Basic Install
+    categories: Logging & Tracing
+    containerImage: registry.connect.redhat.com/odigos/odigos-certified-operator-ubi9:v1.0.164
+    description: Odigos enables automatic distributed tracing with OpenTelemetry and
+      eBPF.
+    features.operators.openshift.io/disconnected: "false"
+    features.operators.openshift.io/fips-compliant: "true"
+    features.operators.openshift.io/proxy-aware: "false"
+    features.operators.openshift.io/tls-profiles: "false"
+    features.operators.openshift.io/token-auth-aws: "false"
+    features.operators.openshift.io/token-auth-azure: "false"
+    features.operators.openshift.io/token-auth-gcp: "false"
+    operators.openshift.io/valid-subscription: Odigos Enterprise subscription (for
+      enterprise features)
+    support: Odigos
+  name: odigos-operator.v1.0.154
+  namespace: odigos-operator-system
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: Odigos is the Schema for the odigos API
+      displayName: Odigos
+      kind: Odigos
+      name: odigos.operator.odigos.io
+      specDescriptors:
+      - description: IgnoredContainers is a list of container names to exclude from
+          instrumentation (useful for sidecars)
+        displayName: Ignored Containers
+        path: ignoredContainers
+      - description: IgnoredNamespaces is a list of namespaces to not show in the
+          Odigos UI
+        displayName: Ignored Namespaces
+        path: ignoredNamespaces
+      - description: ImagePrefix is the prefix for all container images. used when
+          your cluster doesn't have access to docker hub
+        displayName: Image Prefix
+        path: imagePrefix
+      - description: |-
+          MountMethod defines the mechanism for mounting Odigos files into instrumented pods.
+          Must be one of: (k8s-virtual-device, k8s-host-path)
+        displayName: Mount Method
+        path: mountMethod
+      - description: OnPremToken is an optional enterprise token for Odigos Enterprise.
+        displayName: On-Prem Token
+        path: onPremToken
+      - description: OpenShiftEnabled configures selinux on OpenShift nodes.
+        displayName: OpenShift Enabled
+        path: openshiftEnabled
+      - description: PodSecurityPolicy enables the pod security policy.
+        displayName: Pod Security Policy
+        path: podSecurityPolicy
+      - description: Profiles is a list of preset profiles with a specific configuration.
+        displayName: Profiles
+        path: profiles
+      - description: SkipWebhookIssuerCreation skips creating the Issuer and Certificate
+          for the Instrumentor pod webhook if cert-manager is installed.
+        displayName: Skip Webhook Issuer Creation
+        path: skipWebhookIssuerCreation
+      - description: TelemetryEnabled records general telemetry regarding Odigos usage.
+        displayName: Telemetry Enabled
+        path: telemetryEnabled
+      - description: 'UIMode sets the UI mode (one-of: normal, readonly)'
+        displayName: UI Mode
+        path: uiMode
+      statusDescriptors:
+      - description: Conditions store the status conditions of the Odigos instances
+        displayName: Conditions
+        path: conditions
+      version: v1alpha1
+  description: |-
+    The Odigos Operator provides options for installing and configuring Odigos.
+
+    Upon creation of an Odigos resource, the Odigos Operator installs the following Odigos components:
+
+    - Instrumentor
+    - Odiglet
+    - Autoscaler
+    - Scheduler
+    - Frontend UI
+
+    With Odigos installed, follow the Odigos docs at docs.odigos.io for instructions on instrumenting applications and configuring destinations.
+
+    (OpenShift clusters): Set `spec.openshiftEnabled: true` in your `Odigos` CRD to install required functionality for OpenShift.
+  displayName: Odigos Operator
+  icon:
+  - base64data: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1NTIiIGhlaWdodD0iNDMxIiB2aWV3Qm94PSIwIDAgNTUyIDQzMSIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0zMDguNDkxIDgzLjMwOTFWMC4wNzY1MzgxSDQ3Mi41NzNDNDkzLjc4NSAwLjA3NjUzODEgNTExIDE2LjQ0NjQgNTExIDM2LjY1ODlWMzc0LjUwOEM1MTEgMzk0LjcyIDQ5My43ODUgNDExLjA5IDQ3Mi41NzMgNDExLjA5SDMwOC40OTFWMzI4LjM5Nkw0NTQuNjY2IDI2My43NjJDNDc4LjcyMSAyNTMuMDc5IDQ5My43MDggMjMwLjc5MSA0OTMuNzA4IDIwNS41ODNDNDkzLjcwOCAxODAuMzc1IDQ3OC43MjEgMTU4LjAxMSA0NTQuNjY2IDE0Ny40MDVMMzA4LjQxNCA4My4zODU5TDMwOC40OTEgODMuMzA5MVoiIGZpbGw9IiNGOUY5RjkiLz4KPHBhdGggZD0iTTIwMi41MSAzMjcuNzgxVjQxMS4wMTRIMzguNDI2OUMxNy4yMTUyIDQxMS4wMTQgMCAzOTQuNjQ0IDAgMzc0LjQzMVYzNi41ODI0QzAgMTYuMzY5OCAxNy4yMTUyIDAgMzguNDI2OSAwSDIwMi41MVY4Mi42OTQ2TDU2LjMzMzggMTQ3LjMyOUMzMi4yNzg2IDE1OC4wMTEgMTcuMjkyMSAxODAuMjk5IDE3LjI5MjEgMjA1LjUwN0MxNy4yOTIxIDIzMC43MTUgMzIuMjc4NiAyNTMuMDc5IDU2LjMzMzggMjYzLjY4NUwyMDIuNTg2IDMyNy43MDRMMjAyLjUxIDMyNy43ODFaIiBmaWxsPSIjRjlGOUY5Ii8+CjxwYXRoIGQ9Ik0yNTUuNDYyIDI5MC41MDdDMzAyLjM2MyAyOTAuNTA3IDM0MC4zODUgMjUyLjQ4NSAzNDAuMzg1IDIwNS41ODRDMzQwLjM4NSAxNTguNjgyIDMwMi4zNjMgMTIwLjY2IDI1NS40NjIgMTIwLjY2QzIwOC41NiAxMjAuNjYgMTcwLjUzOCAxNTguNjgyIDE3MC41MzggMjA1LjU4NEMxNzAuNTM4IDI1Mi40ODUgMjA4LjU2IDI5MC41MDcgMjU1LjQ2MiAyOTAuNTA3WiIgZmlsbD0iI0Y5RjlGOSIvPgo8L3N2Zz4=
+    mediatype: image/png
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: true
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: false
+    type: AllNamespaces
+  keywords:
+  - OpenTelemetry
+  - eBPF
+  - tracing
+  - observability
+  - distributed tracing
+  - otel
+  - monitoring
+  links:
+  - name: Odigos
+    url: https://odigos.io
+  - name: Odigos Documentation
+    url: https://docs.odigos.io
+  - name: Odigos on Github
+    url: https://github.com/odigos-io/odigos
+  maintainers:
+  - email: mike@odigos.io
+    name: Mike Dame
+  maturity: alpha
+  minKubeVersion: 1.20.15
+  provider:
+    name: Odigos
+    url: https://odigos.io
+  version: 1.0.164

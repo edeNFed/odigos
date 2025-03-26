@@ -103,6 +103,7 @@ type ComputePlatform struct {
 	K8sActualNamespaces  []*K8sActualNamespace  `json:"k8sActualNamespaces"`
 	K8sActualNamespace   *K8sActualNamespace    `json:"k8sActualNamespace,omitempty"`
 	Sources              *PaginatedSources      `json:"sources"`
+	Source               *K8sActualSource       `json:"source"`
 	Destinations         []*Destination         `json:"destinations"`
 	Actions              []*PipelineAction      `json:"actions"`
 	InstrumentationRules []*InstrumentationRule `json:"instrumentationRules"`
@@ -277,6 +278,7 @@ type FieldInput struct {
 
 type GetConfigResponse struct {
 	Installation InstallationStatus `json:"installation"`
+	Tier         Tier               `json:"tier"`
 	Readonly     bool               `json:"readonly"`
 }
 
@@ -302,6 +304,15 @@ type InstrumentationInstanceAnalyze struct {
 	IdentifyingAttributes []*EntityProperty `json:"identifyingAttributes"`
 }
 
+type InstrumentationInstanceHealth struct {
+	Namespace        string          `json:"namespace"`
+	Name             string          `json:"name"`
+	Kind             K8sResourceKind `json:"kind"`
+	TotalInstances   int             `json:"totalInstances"`
+	HealthyInstances int             `json:"healthyInstances"`
+	Condition        *Condition      `json:"condition,omitempty"`
+}
+
 type InstrumentationLibraryGlobalID struct {
 	Name     string               `json:"name"`
 	SpanKind *SpanKind            `json:"spanKind,omitempty"`
@@ -315,6 +326,7 @@ type InstrumentationLibraryGlobalIDInput struct {
 }
 
 type InstrumentationRule struct {
+	Type                     InstrumentationRuleType           `json:"type"`
 	RuleID                   string                            `json:"ruleId"`
 	RuleName                 *string                           `json:"ruleName,omitempty"`
 	Notes                    *string                           `json:"notes,omitempty"`
@@ -345,9 +357,9 @@ type InstrumentationSourcesAnalyze struct {
 }
 
 type K8sActualNamespace struct {
-	Name             string             `json:"name"`
-	Selected         bool               `json:"selected"`
-	K8sActualSources []*K8sActualSource `json:"k8sActualSources"`
+	Name     string             `json:"name"`
+	Selected bool               `json:"selected"`
+	Sources  []*K8sActualSource `json:"sources"`
 }
 
 type K8sActualSource struct {
@@ -754,20 +766,22 @@ func (e ComputePlatformType) MarshalGQL(w io.Writer) {
 type ConditionStatus string
 
 const (
-	ConditionStatusTrue    ConditionStatus = "True"
-	ConditionStatusFalse   ConditionStatus = "False"
-	ConditionStatusUnknown ConditionStatus = "Unknown"
+	ConditionStatusSuccess  ConditionStatus = "success"
+	ConditionStatusError    ConditionStatus = "error"
+	ConditionStatusDisabled ConditionStatus = "disabled"
+	ConditionStatusLoading  ConditionStatus = "loading"
 )
 
 var AllConditionStatus = []ConditionStatus{
-	ConditionStatusTrue,
-	ConditionStatusFalse,
-	ConditionStatusUnknown,
+	ConditionStatusSuccess,
+	ConditionStatusError,
+	ConditionStatusDisabled,
+	ConditionStatusLoading,
 }
 
 func (e ConditionStatus) IsValid() bool {
 	switch e {
-	case ConditionStatusTrue, ConditionStatusFalse, ConditionStatusUnknown:
+	case ConditionStatusSuccess, ConditionStatusError, ConditionStatusDisabled, ConditionStatusLoading:
 		return true
 	}
 	return false
@@ -834,6 +848,49 @@ func (e *InstallationStatus) UnmarshalGQL(v interface{}) error {
 }
 
 func (e InstallationStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+type InstrumentationRuleType string
+
+const (
+	InstrumentationRuleTypePayloadCollection InstrumentationRuleType = "PayloadCollection"
+	InstrumentationRuleTypeCodeAttributes    InstrumentationRuleType = "CodeAttributes"
+	InstrumentationRuleTypeUnknownType       InstrumentationRuleType = "UnknownType"
+)
+
+var AllInstrumentationRuleType = []InstrumentationRuleType{
+	InstrumentationRuleTypePayloadCollection,
+	InstrumentationRuleTypeCodeAttributes,
+	InstrumentationRuleTypeUnknownType,
+}
+
+func (e InstrumentationRuleType) IsValid() bool {
+	switch e {
+	case InstrumentationRuleTypePayloadCollection, InstrumentationRuleTypeCodeAttributes, InstrumentationRuleTypeUnknownType:
+		return true
+	}
+	return false
+}
+
+func (e InstrumentationRuleType) String() string {
+	return string(e)
+}
+
+func (e *InstrumentationRuleType) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = InstrumentationRuleType(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid InstrumentationRuleType", str)
+	}
+	return nil
+}
+
+func (e InstrumentationRuleType) MarshalGQL(w io.Writer) {
 	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
@@ -1016,5 +1073,48 @@ func (e *SpanKind) UnmarshalGQL(v interface{}) error {
 }
 
 func (e SpanKind) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+type Tier string
+
+const (
+	TierCommunity Tier = "community"
+	TierCloud     Tier = "cloud"
+	TierOnprem    Tier = "onprem"
+)
+
+var AllTier = []Tier{
+	TierCommunity,
+	TierCloud,
+	TierOnprem,
+}
+
+func (e Tier) IsValid() bool {
+	switch e {
+	case TierCommunity, TierCloud, TierOnprem:
+		return true
+	}
+	return false
+}
+
+func (e Tier) String() string {
+	return string(e)
+}
+
+func (e *Tier) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = Tier(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid Tier", str)
+	}
+	return nil
+}
+
+func (e Tier) MarshalGQL(w io.Writer) {
 	fmt.Fprint(w, strconv.Quote(e.String()))
 }

@@ -49,16 +49,33 @@ const (
 	Destination             = "Destination"
 )
 
+// Odigos config properties
+const (
+	TelemetryEnabledProperty          = "telemetry-enabled"
+	OpenshiftEnabledProperty          = "openshift-enabled"
+	PspProperty                       = "psp"
+	SkipWebhookIssuerCreationProperty = "skip-webhook-issuer-creation"
+	AllowConcurrentAgentsProperty     = "allow-concurrent-agents"
+	ImagePrefixProperty               = "image-prefix"
+	UiModeProperty                    = "ui-mode"
+	UiPaginationLimit                 = "ui-pagination-limit"
+	IgnoredNamespacesProperty         = "ignored-namespaces"
+	IgnoredContainersProperty         = "ignored-containers"
+	MountMethodProperty               = "mount-method"
+	CentralBackendURLProperty         = "central-backend-url"
+)
+
 var (
 	ErrorPodsNotFound = errors.New("could not find a ready pod")
 )
 
 // Agents related consts
 var (
+	OtelLogsExporter            = "OTEL_LOGS_EXPORTER"
+	OtelMetricsExporter         = "OTEL_METRICS_EXPORTER"
+	OtelTracesExporter          = "OTEL_TRACES_EXPORTER"
 	OtelExporterEndpointEnvName = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	// Python related ones
-	OtelPythonConfiguratorEnvName  = "OTEL_PYTHON_CONFIGURATOR"
-	OtelPythonConfiguratorEnvValue = "odigos-python-configurator"
-	OpampServerHostEnvName         = "ODIGOS_OPAMP_SERVER_HOST"
-	OpAMPPort                      = 4320
+	OpampServerHostEnvName = "ODIGOS_OPAMP_SERVER_HOST"
+	OpAMPPort              = 4320
 )

@@ -2,6 +2,7 @@ package agentenabled
 
 import (
 	odigosv1 "github.com/odigos-io/odigos/api/odigos/v1alpha1"
+	"github.com/odigos-io/odigos/distros"
 	instrumentorpredicate "github.com/odigos-io/odigos/instrumentor/controllers/utils/predicates"
 	odigospredicate "github.com/odigos-io/odigos/k8sutils/pkg/predicate"
 	corev1 "k8s.io/api/core/v1"
@@ -10,14 +11,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-func SetupWithManager(mgr ctrl.Manager) error {
+func SetupWithManager(mgr ctrl.Manager, dp *distros.Provider) error {
 	err := builder.
 		ControllerManagedBy(mgr).
 		Named("agentenabled-collectorsgroup").
 		For(&odigosv1.CollectorsGroup{}).
 		WithEventFilter(predicate.And(&odigospredicate.OdigosCollectorsGroupNodePredicate, &odigospredicate.CgBecomesReadyPredicate{})).
 		Complete(&CollectorsGroupReconciler{
-			Client: mgr.GetClient(),
+			Client:          mgr.GetClient(),
+			DistrosProvider: dp,
 		})
 	if err != nil {
 		return err
@@ -31,7 +33,8 @@ func SetupWithManager(mgr ctrl.Manager) error {
 		// When the instrumentation config is deleted, we need to roll out the workload to un-instrument it.
 		WithEventFilter(predicate.Or(&instrumentorpredicate.RuntimeDetailsChangedPredicate{}, odigospredicate.DeletionPredicate{})).
 		Complete(&InstrumentationConfigReconciler{
-			Client: mgr.GetClient(),
+			Client:          mgr.GetClient(),
+			DistrosProvider: dp,
 		})
 	if err != nil {
 		return err
@@ -43,7 +46,8 @@ func SetupWithManager(mgr ctrl.Manager) error {
 		For(&odigosv1.InstrumentationRule{}).
 		WithEventFilter(&instrumentorpredicate.OtelSdkInstrumentationRulePredicate{}).
 		Complete(&InstrumentationRuleReconciler{
-			Client: mgr.GetClient(),
+			Client:          mgr.GetClient(),
+			DistrosProvider: dp,
 		})
 	if err != nil {
 		return err
@@ -55,7 +59,8 @@ func SetupWithManager(mgr ctrl.Manager) error {
 		For(&corev1.ConfigMap{}).
 		WithEventFilter(odigospredicate.OdigosEffectiveConfigMapPredicate).
 		Complete(&EffectiveConfigReconciler{
-			Client: mgr.GetClient(),
+			Client:          mgr.GetClient(),
+			DistrosProvider: dp,
 		})
 	if err != nil {
 		return err
@@ -65,7 +70,8 @@ func SetupWithManager(mgr ctrl.Manager) error {
 		WebhookManagedBy(mgr).
 		For(&corev1.Pod{}).
 		WithDefaulter(&PodsWebhook{
-			Client: mgr.GetClient(),
+			Client:        mgr.GetClient(),
+			DistrosGetter: dp.Getter,
 		}).
 		Complete()
 	if err != nil {

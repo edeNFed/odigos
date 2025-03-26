@@ -146,9 +146,6 @@ spec:
             - mountPath: /var/log
               name: varlog
               readOnly: true
-            - mountPath: /var/lib/kubelet/pod-resources
-              name: kubeletpodresources
-              readOnly: true
             - mountPath: /hostfs
               name: hostfs
               readOnly: true
@@ -176,7 +173,7 @@ spec:
               (memory != null): true
             limits:
               (memory != null): true
-      hostNetwork: true
+      (($values.k8sMinorVersion < `26` && hostNetwork != null) || (hostNetwork == null)): true
       nodeSelector:
         kubernetes.io/os: linux
       securityContext: {}
@@ -198,10 +195,6 @@ spec:
             path: /var/lib/docker/containers
             type: ""
           name: varlibdockercontainers
-        - hostPath:
-            path: /var/lib/kubelet/pod-resources
-            type: ""
-          name: kubeletpodresources
         - hostPath:
             path: /
             type: ""

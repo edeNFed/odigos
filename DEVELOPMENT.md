@@ -4,6 +4,68 @@ This guide provides advanced instructions for contributors and maintainers, cove
 
 ---
 
+## Go Workspace setup
+
+To effectively develop Odigos, it is recommended to use [Go Workspaces](https://go.dev/blog/get-familiar-with-workspaces).
+
+This repository is a mono-repo of multiple component and API modules, and Odigos also relies on other repos such as [OpenTelemetry Go Auto-Instrumentation](https://github.com/open-telemetry/opentelemetry-go-instrumentation)
+that rely on locally built eBPF dependencies.
+
+Using Go Workspaces allows IDEs like VSCode to resolve these dependencies locally without having to rely on complex `go mod replace` statements.
+
+Go Workspaces are intended to be customized to your local development environment and folder structure. Because of that, we don't commit any `go.work` files to this repo,
+and you may need to do some custom tweaking to make Go Workspaces work for you. But a good starting point is to run the following from the root folder of this repo:
+
+```
+go work init
+go work use -r .
+```
+
+This will create a `go.work` file using all of the Odigos modules in this repository. It will look something like this:
+
+```
+go 1.23.5
+
+use (
+	./api
+	./autoscaler
+	./cli
+<several more>
+)
+```
+
+Other dependencies like Go Auto-Instrumentation or Odigos's [Runtime Detector](https://github.com/odigos-io/runtime-detector) will need to be added based on your local setup.
+
+For example, if your local structure looks like this:
+
+```
+code/
+-- github.com/
+---- odigos-io/
+------ odigos/
+------ runtime-detector/
+---- open-telemetry/
+------ opentelemetry-go-instrumentation/
+```
+
+Update your `go.work` you created above in `odigos` to the following:
+
+```
+go 1.23.5
+
+use (
+   ../../open-telemetry/opentelemetry-go-instrumentation
+   ../runtime-detector
+
+	./api
+	./autoscaler
+	./cli
+<several more>
+)
+```
+
+This now tells VSCode that when you are working in the `odigos` folder to reference `../../open-telemetry/opentelemetry-go-instrumentation` and `../runtime-detector` for those dependencies.
+
 ## CPU and Memory Profiling for the Collectors
 
 ### Step 1: Port Forward the Gateway or Data Collection Pod
@@ -107,8 +169,9 @@ To debug the `cli install` command in Visual Studio Code, use the following conf
 
 ### Updating OpenTelemetry dependencies
 
-1. Update `OTEL_*` versions in `Makefile`
-2. Run `make update-otel`
-3. Update versions in `collector/builder-config.yaml`
-4. In `collector` directory, run `make genodigoscol generate` (may help to run in a Docker container)
-5. Run `make go-mod-tidy`
+1. Update builder version and component versions in `collector/builder-config.yaml` and builder version in `collector/Makefile`
+2. In `collector` directory, run `make genodigoscol generate` (may help to run in a Docker container)
+3. Run `make go-mod-tidy`
+4. Update `OTEL_*` versions in `Makefile`
+5. Run `make update-otel`
+6. Run `make go-mod-tidy`

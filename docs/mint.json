@@ -1,8 +1,8 @@
 {
   "name": "Odigos",
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/logo_black.svg",
+    "dark": "/logo/logo_white.svg"
   },
   "favicon": "/logo/icon.svg",
   "colors": {
@@ -145,6 +145,13 @@
             "instrumentations/dotnet/native",
             "instrumentations/dotnet/enrichment"
           ]
+        },
+        {
+          "group": "Advanced",
+          "icon": "gear",
+          "pages": [
+            "instrumentations/configuration/mount-method"
+          ]
         }
       ]
     },
@@ -213,7 +220,9 @@
           "icon": "folder-tree",
           "pages": [
             "backends/appdynamics",
+            "backends/awscloudwatch",
             "backends/awss3",
+            "backends/awsxray",
             "backends/axiom",
             "backends/azureblob",
             "backends/betterstack",

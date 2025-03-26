@@ -7,20 +7,27 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/odigos-io/odigos/common"
+	"github.com/odigos-io/odigos/distros"
 	"github.com/odigos-io/odigos/instrumentor/controllers"
 	"github.com/odigos-io/odigos/instrumentor/report"
 	"github.com/odigos-io/odigos/instrumentor/runtimemigration"
+	"github.com/odigos-io/odigos/k8sutils/pkg/feature"
 	"golang.org/x/sync/errgroup"
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
 
 type Instrumentor struct {
-	mgr controllerruntime.Manager
+	mgr    controllerruntime.Manager
 	logger logr.Logger
 }
 
-func New(opts controllers.KubeManagerOptions) (*Instrumentor, error) {
+func New(opts controllers.KubeManagerOptions, dp *distros.Provider) (*Instrumentor, error) {
+	err := feature.Setup()
+	if err != nil {
+		return nil, err
+	}
+
 	mgr, err := controllers.CreateManager(opts)
 	if err != nil {
 		return nil, err
@@ -31,7 +38,7 @@ func New(opts controllers.KubeManagerOptions) (*Instrumentor, error) {
 	mgr.Add(&runtimemigration.MigrationRunnable{KubeClient: mgr.GetClient(), Logger: opts.Logger})
 
 	// wire up the controllers and webhooks
-	err = controllers.SetupWithManager(mgr)
+	err = controllers.SetupWithManager(mgr, dp)
 	if err != nil {
 		return nil, err
 	}
@@ -41,14 +48,14 @@ func New(opts controllers.KubeManagerOptions) (*Instrumentor, error) {
 		return nil, fmt.Errorf("unable to set up health check: %w", err)
 	}
 
-	if err := mgr.AddReadyzCheck("readyz", func(req *http.Request) error{
+	if err := mgr.AddReadyzCheck("readyz", func(req *http.Request) error {
 		return mgr.GetWebhookServer().StartedChecker()(req)
 	}); err != nil {
 		return nil, fmt.Errorf("unable to set up ready check: %w", err)
 	}
 
 	return &Instrumentor{
-		mgr: mgr,
+		mgr:    mgr,
 		logger: opts.Logger,
 	}, nil
 }

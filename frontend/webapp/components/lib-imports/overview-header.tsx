@@ -1,42 +1,51 @@
 import React from 'react';
-import Theme from '@odigos/ui-theme';
-import { SLACK_LINK } from '@/utils';
 import { useStatusStore } from '@/store';
-import { OdigosLogoText, SlackLogo } from '@odigos/ui-icons';
-import { useConfig, useDescribeOdigos, useTokenCRUD } from '@/hooks';
-import { CliDrawer, NotificationManager } from '@odigos/ui-containers';
-import { FORM_ALERTS, NOTIFICATION_TYPE, PLATFORM_TYPE } from '@odigos/ui-utils';
-import { Header, IconButton, PlatformSelect, Status, Tooltip } from '@odigos/ui-components';
+import { OdigosLogoText } from '@odigos/ui-kit/icons';
+import { FORM_ALERTS } from '@odigos/ui-kit/constants';
+import { getPlatformLabel } from '@odigos/ui-kit/functions';
+import { useConfig, useDescribe, useTokenCRUD } from '@/hooks';
+import { PlatformType, StatusType } from '@odigos/ui-kit/types';
+import { Header, Status, Tooltip } from '@odigos/ui-kit/components';
+import { ComputePlatformSelect, NotificationManager, SlackInvite, SystemOverview, ToggleDarkMode } from '@odigos/ui-kit/containers';
 
 const OverviewHeader = () => {
   const { status, title, message } = useStatusStore();
 
-  const { data: config } = useConfig();
+  const { isReadonly } = useConfig();
+  const { fetchDescribeOdigos } = useDescribe();
   const { tokens, updateToken } = useTokenCRUD();
-  const { data: describeOdigos } = useDescribeOdigos();
 
   return (
     <Header
       left={[
         <OdigosLogoText key='logo' size={100} />,
-        <PlatformSelect key='platform' type={PLATFORM_TYPE.K8S} />,
+        <ComputePlatformSelect
+          key='cp-select'
+          selected={{
+            id: 'default',
+            name: getPlatformLabel(PlatformType.K8s),
+            type: PlatformType.K8s,
+            connectionStatus: StatusType.Success,
+          }}
+          connections={[]}
+          onSelect={() => {}}
+          onViewAll={() => {}}
+        />,
         <Status key='status' status={status} title={title} subtitle={message} size={14} family='primary' withIcon withBackground />,
-        config?.readonly && (
+        isReadonly && (
           <Tooltip key='readonly' text={FORM_ALERTS.READONLY_WARNING}>
-            <Status status={NOTIFICATION_TYPE.INFO} title='Read Only' size={14} family='primary' withIcon withBackground />
+            <Status status={StatusType.Info} title='Read Only' size={14} family='primary' withIcon withBackground />
           </Tooltip>
         ),
       ]}
       right={[
-        <Theme.ToggleDarkMode key='toggle-theme' />,
+        <ToggleDarkMode key='toggle-theme' />,
         <NotificationManager key='notifs' />,
-        <CliDrawer key='cli' tokens={tokens} saveToken={updateToken} describe={describeOdigos} />,
-        <IconButton key='slack' onClick={() => window.open(SLACK_LINK, '_blank', 'noopener noreferrer')} tooltip='Join our Slack community'>
-          <SlackLogo />
-        </IconButton>,
+        <SystemOverview key='cli' tokens={tokens} saveToken={updateToken} fetchDescribeOdigos={fetchDescribeOdigos} />,
+        <SlackInvite key='slack' />,
       ]}
     />
   );
 };
 
-export default OverviewHeader;
+export { OverviewHeader };

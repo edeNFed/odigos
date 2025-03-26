@@ -7,12 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/odigos-io/odigos/api/k8sconsts"
 	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
 	"github.com/odigos-io/odigos/common/consts"
 	"github.com/odigos-io/odigos/frontend/graph/model"
 	"github.com/odigos-io/odigos/frontend/kube"
 	"github.com/odigos-io/odigos/k8sutils/pkg/client"
+	"github.com/odigos-io/odigos/k8sutils/pkg/workload"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -55,50 +58,6 @@ func GetWorkload(c context.Context, ns string, kind string, name string) (metav1
 	default:
 		return nil, 0
 	}
-}
-
-func AddHealthyInstrumentationInstancesCondition(ctx context.Context, instruConfig *v1alpha1.InstrumentationConfig, source *model.K8sActualSource) error {
-	labelSelector := fmt.Sprintf("%s=%s", consts.InstrumentedAppNameLabel, instruConfig.Name)
-	instancesList, err := kube.DefaultClient.OdigosClient.InstrumentationInstances(instruConfig.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	totalInstances := len(instancesList.Items)
-	if totalInstances == 0 {
-		// no instances so nothing to report
-		return nil
-	}
-
-	healthyInstances := 0
-	latestStatusTime := metav1.NewTime(time.Time{})
-	for _, instance := range instancesList.Items {
-		if instance.Status.Healthy != nil && *instance.Status.Healthy {
-			healthyInstances++
-		}
-		if instance.Status.LastStatusTime.After(latestStatusTime.Time) {
-			latestStatusTime = instance.Status.LastStatusTime
-		}
-	}
-
-	status := model.ConditionStatusTrue
-	if healthyInstances < totalInstances {
-		status = model.ConditionStatusFalse
-	}
-
-	message := fmt.Sprintf("%d/%d instances are healthy", healthyInstances, totalInstances)
-	lastTransitionTime := Metav1TimeToString(latestStatusTime)
-	source.Conditions = append(source.Conditions, &model.Condition{
-		Type:               "HealthyInstrumentationInstances",
-		Status:             status,
-		LastTransitionTime: &lastTransitionTime,
-		Message:            &message,
-	})
-
-	return nil
 }
 
 func GetWorkloadsInNamespace(ctx context.Context, nsName string) ([]model.K8sActualSource, error) {
@@ -244,6 +203,55 @@ func GetSourceCRD(ctx context.Context, nsName string, workloadName string, workl
 	return &list.Items[0], err
 }
 
+func DeleteSourceWithAPI(c *gin.Context) {
+	toggleSourceWithAPI(c, false)
+}
+
+func CreateSourceWithAPI(c *gin.Context) {
+	toggleSourceWithAPI(c, true)
+}
+
+func toggleSourceWithAPI(c *gin.Context, enabled bool) {
+	ctx := c.Request.Context()
+	ns := c.Param("namespace")
+	name := c.Param("name")
+	kind := c.Param("kind")
+	wk, ok := stringToWorkloadKind(kind)
+	if !ok {
+		c.JSON(400, gin.H{
+			"message": fmt.Sprintf("invalid kind: %s", kind),
+		})
+		return
+	}
+
+	err := ToggleSourceCRD(ctx, ns, name, wk, enabled)
+	if err != nil {
+		c.JSON(500, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message": "toggle successful",
+	})
+}
+
+func stringToWorkloadKind(workloadKind string) (WorkloadKind, bool) {
+	switch strings.ToLower(workloadKind) {
+	case "namespace":
+		return WorkloadKindNamespace, true
+	case "deployment":
+		return WorkloadKindDeployment, true
+	case "statefulset":
+		return WorkloadKindStatefulSet, true
+	case "daemonset":
+		return WorkloadKindDaemonSet, true
+	}
+
+	return "", false
+}
+
 func CreateSourceCRD(ctx context.Context, nsName string, workloadName string, workloadKind WorkloadKind) (*v1alpha1.Source, error) {
 	switch workloadKind {
 	// Namespace is not a workload, but we need it to "select future apps" by creating a Source CRD for it
@@ -327,4 +335,118 @@ func ToggleSourceCRD(ctx context.Context, nsName string, workloadName string, wo
 	} else {
 		return deleteSourceCRD(ctx, nsName, workloadName, workloadKind)
 	}
+}
+
+func GetInstrumentationInstancesHealthCondition(ctx context.Context, namespace string, name string, kind string) (model.Condition, error) {
+	objectName := workload.CalculateWorkloadRuntimeObjectName(name, kind)
+	if len(objectName) > 63 {
+		// prevents k8s error: must be no more than 63 characters
+		// see https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-label-names
+		return model.Condition{}, nil
+	}
+
+	var message string
+	labelSelector := fmt.Sprintf("%s=%s", consts.InstrumentedAppNameLabel, objectName)
+	list, err := kube.DefaultClient.OdigosClient.InstrumentationInstances(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		message = err.Error()
+	}
+
+	totalInstances := len(list.Items)
+	if totalInstances == 0 {
+		// no instances so nothing to report
+		return model.Condition{}, nil
+	}
+
+	healthyInstances := 0
+	for _, instance := range list.Items {
+		if instance.Status.Healthy != nil && *instance.Status.Healthy {
+			healthyInstances++
+		}
+	}
+
+	status := model.ConditionStatusSuccess
+	if healthyInstances < totalInstances || message != "" {
+		status = model.ConditionStatusError
+	}
+
+	reason := v1alpha1.InstrumentationInstancesHealth
+	lastTransitionTime := Metav1TimeToString(metav1.NewTime(time.Time{}))
+	if message == "" {
+		message = fmt.Sprintf("%d/%d instances are healthy", healthyInstances, totalInstances)
+	}
+
+	condition := model.Condition{
+		Type:               reason,
+		Status:             status,
+		Reason:             &reason,
+		Message:            &message,
+		LastTransitionTime: &lastTransitionTime,
+	}
+
+	return condition, nil
+}
+
+func GetInstrumentationInstancesHealthConditions(ctx context.Context) ([]*model.InstrumentationInstanceHealth, error) {
+	resultMap := make(map[string]*model.InstrumentationInstanceHealth)
+	list, err := kube.DefaultClient.OdigosClient.InstrumentationInstances("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, instance := range list.Items {
+		namespace := instance.Namespace
+		objectName, exists := instance.Labels[consts.InstrumentedAppNameLabel]
+		if !exists {
+			continue
+		}
+
+		name, kind, err := workload.ExtractWorkloadInfoFromRuntimeObjectName(objectName)
+		if err != nil {
+			continue
+		}
+
+		key := fmt.Sprintf("%s/%s/%s", namespace, name, kind)
+
+		if _, exists := resultMap[key]; !exists {
+			resultMap[key] = &model.InstrumentationInstanceHealth{
+				Namespace:        namespace,
+				Name:             name,
+				Kind:             model.K8sResourceKind(kind),
+				TotalInstances:   0,
+				HealthyInstances: 0,
+			}
+		}
+
+		resultMap[key].TotalInstances++
+		if instance.Status.Healthy != nil && *instance.Status.Healthy {
+			resultMap[key].HealthyInstances++
+		}
+	}
+
+	result := make([]*model.InstrumentationInstanceHealth, 0, len(resultMap))
+	for _, item := range resultMap {
+		status := model.ConditionStatusSuccess
+		if item.HealthyInstances < item.TotalInstances {
+			status = model.ConditionStatusError
+		}
+
+		reason := v1alpha1.InstrumentationInstancesHealth
+		message := fmt.Sprintf("%d/%d instances are healthy", item.HealthyInstances, item.TotalInstances)
+		lastTransitionTime := Metav1TimeToString(metav1.NewTime(time.Now()))
+
+		item.Condition = &model.Condition{
+			Type:               reason,
+			Status:             status,
+			Reason:             &reason,
+			Message:            &message,
+			LastTransitionTime: &lastTransitionTime,
+		}
+
+		result = append(result, item)
+	}
+
+	return result, nil
 }

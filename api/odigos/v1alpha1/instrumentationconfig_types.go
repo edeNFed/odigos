@@ -93,8 +93,8 @@ const (
 	AgentEnabledReasonEnabledSuccessfully            AgentEnabledReason = "EnabledSuccessfully"
 	AgentEnabledReasonWaitingForRuntimeInspection    AgentEnabledReason = "WaitingForRuntimeInspection"
 	AgentEnabledReasonWaitingForNodeCollector        AgentEnabledReason = "WaitingForNodeCollector"
-	AgentEnabledReasonUnsupportedProgrammingLanguage AgentEnabledReason = "UnsupportedProgrammingLanguage"
 	AgentEnabledReasonIgnoredContainer               AgentEnabledReason = "IgnoredContainer"
+	AgentEnabledReasonUnsupportedProgrammingLanguage AgentEnabledReason = "UnsupportedProgrammingLanguage"
 	AgentEnabledReasonNoAvailableAgent               AgentEnabledReason = "NoAvailableAgent"
 	AgentEnabledReasonUnsupportedRuntimeVersion      AgentEnabledReason = "UnsupportedRuntimeVersion"
 	AgentEnabledReasonMissingDistroParameter         AgentEnabledReason = "MissingDistroParameter"
@@ -120,11 +120,11 @@ func AgentInjectionReasonPriority(reason AgentEnabledReason) int {
 		return 1
 	case AgentEnabledReasonWaitingForNodeCollector:
 		return 2
-	case AgentEnabledReasonUnsupportedProgrammingLanguage:
-		return 3
-	case AgentEnabledReasonUnsupportedRuntimeVersion:
-		return 4
 	case AgentEnabledReasonIgnoredContainer:
+		return 3
+	case AgentEnabledReasonUnsupportedProgrammingLanguage:
+		return 4
+	case AgentEnabledReasonUnsupportedRuntimeVersion:
 		return 5
 	case AgentEnabledReasonNoAvailableAgent:
 		return 6
@@ -134,6 +134,23 @@ func AgentInjectionReasonPriority(reason AgentEnabledReason) int {
 		return 8
 	default:
 		return 9
+	}
+}
+
+// some conditions with "status: false" should be considered as "disabled" status.
+// this function returns true if the reason is considered as "disabled" status.
+func IsReasonStatusDisabled(reason string) bool {
+	switch reason {
+	case string(AgentEnabledReasonUnsupportedProgrammingLanguage),
+		string(AgentEnabledReasonUnsupportedRuntimeVersion),
+		string(RuntimeDetectionReasonNoRunningPods),
+		string(AgentEnabledReasonIgnoredContainer),
+		string(AgentEnabledReasonNoAvailableAgent),
+		string(AgentEnabledReasonOtherAgentDetected):
+
+		return true
+	default:
+		return false
 	}
 }
 

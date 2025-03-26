@@ -23,22 +23,19 @@ import (
 	"github.com/odigos-io/odigos/autoscaler/controllers/datacollection"
 	predicate "github.com/odigos-io/odigos/k8sutils/pkg/predicate"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/version"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type InstrumentationConfigReconciler struct {
 	client.Client
-	Scheme               *runtime.Scheme
-	ImagePullSecrets     []string
-	OdigosVersion        string
-	K8sVersion           *version.Version
-	DisableNameProcessor bool
+	Scheme           *runtime.Scheme
+	ImagePullSecrets []string
+	OdigosVersion    string
 }
 
 func (r *InstrumentationConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	err := datacollection.Sync(ctx, r.Client, r.Scheme, r.ImagePullSecrets, r.OdigosVersion, r.K8sVersion, r.DisableNameProcessor)
+	err := datacollection.Sync(ctx, r.Client, r.Scheme, r.ImagePullSecrets, r.OdigosVersion)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

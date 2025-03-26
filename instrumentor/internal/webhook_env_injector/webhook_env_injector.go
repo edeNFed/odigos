@@ -1,25 +1,27 @@
 package webhookenvinjector
 
 import (
-	"fmt"
+	"context"
 	"strings"
 
 	"github.com/go-logr/logr"
+	odigosv1 "github.com/odigos-io/odigos/api/odigos/v1alpha1"
 	"github.com/odigos-io/odigos/common"
 	commonconsts "github.com/odigos-io/odigos/common/consts"
 	"github.com/odigos-io/odigos/common/envOverwrite"
+	"github.com/odigos-io/odigos/k8sutils/pkg/env"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/odigos-io/odigos/api/k8sconsts"
-	v1alpha1 "github.com/odigos-io/odigos/api/odigos/v1alpha1"
 )
 
-func InjectOdigosAgentEnvVars(logger logr.Logger, podWorkload k8sconsts.PodWorkload, container *corev1.Container,
-	otelsdk common.OtelSdk, runtimeDetails *v1alpha1.RuntimeDetailsByContainer) {
+func InjectOdigosAgentEnvVars(ctx context.Context, logger logr.Logger, podWorkload k8sconsts.PodWorkload, container *corev1.Container,
+	otelsdk common.OtelSdk, runtimeDetails *odigosv1.RuntimeDetailsByContainer, client client.Client) {
 
-	// This is a temporary and should be migrated to distro
-	if runtimeDetails.Language == common.PythonProgrammingLanguage && otelsdk == common.OtelSdkNativeCommunity {
-		InjectPythonNativeEnvVars(container)
+	if runtimeDetails.Language == common.JavaProgrammingLanguage && otelsdk == common.OtelSdkNativeCommunity {
+		injectJavaCommunityEnvVars(ctx, logger, container, client)
 	}
 
 	envVarsPerLanguage := getEnvVarNamesForLanguage(runtimeDetails.Language)
@@ -72,7 +74,7 @@ func handleManifestEnvVar(container *corev1.Container, envVarName string, otelsd
 }
 
 func injectEnvVarsFromRuntime(logger logr.Logger, container *corev1.Container, envVarName string,
-	otelsdk common.OtelSdk, runtimeDetails *v1alpha1.RuntimeDetailsByContainer) error {
+	otelsdk common.OtelSdk, runtimeDetails *odigosv1.RuntimeDetailsByContainer) error {
 	logger.Info("Inject Odigos values based on runtime details", "envVarName", envVarName, "container", container.Name)
 
 	if !shouldInject(runtimeDetails, logger, container.Name) {
@@ -84,7 +86,7 @@ func injectEnvVarsFromRuntime(logger logr.Logger, container *corev1.Container, e
 	return nil
 }
 
-func processEnvVarsFromRuntimeDetails(runtimeDetails *v1alpha1.RuntimeDetailsByContainer, envVarName string, otelsdk common.OtelSdk) []corev1.EnvVar {
+func processEnvVarsFromRuntimeDetails(runtimeDetails *odigosv1.RuntimeDetailsByContainer, envVarName string, otelsdk common.OtelSdk) []corev1.EnvVar {
 	var envVars []corev1.EnvVar
 
 	odigosValueForOtelSdk := envOverwrite.GetPossibleValuesPerEnv(envVarName)
@@ -117,7 +119,7 @@ func processEnvVarsFromRuntimeDetails(runtimeDetails *v1alpha1.RuntimeDetailsByC
 	return envVars
 }
 
-func shouldInject(runtimeDetails *v1alpha1.RuntimeDetailsByContainer, logger logr.Logger, containerName string) bool {
+func shouldInject(runtimeDetails *odigosv1.RuntimeDetailsByContainer, logger logr.Logger, containerName string) bool {
 
 	// Skip injection if runtimeDetails.RuntimeUpdateState is nil.
 	// This indicates that either the new runtime detection or the new runtime detection migrator did not run for this container.
@@ -126,7 +128,7 @@ func shouldInject(runtimeDetails *v1alpha1.RuntimeDetailsByContainer, logger log
 		return false
 	}
 
-	if *runtimeDetails.RuntimeUpdateState == v1alpha1.ProcessingStateFailed {
+	if *runtimeDetails.RuntimeUpdateState == odigosv1.ProcessingStateFailed {
 		var criErrorMessage string
 		if runtimeDetails.CriErrorMessage != nil {
 			criErrorMessage = *runtimeDetails.CriErrorMessage
@@ -148,27 +150,52 @@ func getContainerEnvVarPointer(containerEnv *[]corev1.EnvVar, envVarName string)
 	return nil
 }
 
-func InjectPythonNativeEnvVars(container *corev1.Container) {
+func injectJavaCommunityEnvVars(ctx context.Context, logger logr.Logger,
+	container *corev1.Container, client client.Client) {
+
+	// Set the OTEL signals exporter env vars
+	setOtelSignalsExporterEnvVars(ctx, logger, container, client)
+}
+
+func setOtelSignalsExporterEnvVars(ctx context.Context, logger logr.Logger,
+	container *corev1.Container, client client.Client) {
+
+	odigosNamespace := env.GetCurrentNamespace()
+
+	var nodeCollectorGroup odigosv1.CollectorsGroup
+	err := client.Get(ctx, types.NamespacedName{
+		Namespace: odigosNamespace,
+		Name:      k8sconsts.OdigosNodeCollectorDaemonSetName,
+	}, &nodeCollectorGroup)
+	if err != nil {
+		// Uses OTEL's default settings by omitting these environment variables.
+		// Although the current default is "otlp," it's safer to set them explicitly
+		// to avoid potential future changes and improve clarity.
+		logger.Error(err, "Failed to get nodeCollectorGroup using default OTEL settings")
+		return
+	}
+
+	signals := nodeCollectorGroup.Status.ReceiverSignals
+
+	// Default values
+	logsExporter := "none"
+	metricsExporter := "none"
+	tracesExporter := "none"
+
+	for _, signal := range signals {
+		switch signal {
+		case common.LogsObservabilitySignal:
+			logsExporter = "otlp"
+		case common.MetricsObservabilitySignal:
+			metricsExporter = "otlp"
+		case common.TracesObservabilitySignal:
+			tracesExporter = "otlp"
+		}
+	}
+
 	container.Env = append(container.Env,
-		corev1.EnvVar{
-			Name: "NODE_IP",
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "status.hostIP",
-				},
-			},
-		},
-		corev1.EnvVar{
-			Name:  commonconsts.OpampServerHostEnvName,
-			Value: fmt.Sprintf("$(NODE_IP):%d", commonconsts.OpAMPPort),
-		},
-		corev1.EnvVar{
-			Name:  commonconsts.OtelExporterEndpointEnvName,
-			Value: fmt.Sprintf("http://$(NODE_IP):%d", commonconsts.OTLPHttpPort),
-		},
-		corev1.EnvVar{
-			Name:  commonconsts.OtelPythonConfiguratorEnvName,
-			Value: commonconsts.OtelPythonConfiguratorEnvValue,
-		},
+		corev1.EnvVar{Name: commonconsts.OtelLogsExporter, Value: logsExporter},
+		corev1.EnvVar{Name: commonconsts.OtelMetricsExporter, Value: metricsExporter},
+		corev1.EnvVar{Name: commonconsts.OtelTracesExporter, Value: tracesExporter},
 	)
 }

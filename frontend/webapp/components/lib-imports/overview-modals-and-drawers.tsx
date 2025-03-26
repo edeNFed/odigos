@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { type WorkloadId } from '@odigos/ui-utils';
-import { ActionDrawer, ActionModal, DestinationDrawer, DestinationModal, InstrumentationRuleDrawer, InstrumentationRuleModal, SourceDrawer, SourceModal, useDrawerStore } from '@odigos/ui-containers';
+import { ActionDrawer, ActionModal, DestinationDrawer, DestinationModal, InstrumentationRuleDrawer, InstrumentationRuleModal, SourceDrawer, SourceModal } from '@odigos/ui-kit/containers';
 import {
   useActionCRUD,
-  useDescribeOdigos,
-  useDescribeSource,
+  useConfig,
+  useDescribe,
   useDestinationCategories,
   useDestinationCRUD,
   useInstrumentationRuleCRUD,
@@ -15,60 +14,50 @@ import {
 } from '@/hooks';
 
 const OverviewModalsAndDrawers = () => {
-  const { drawerEntityId } = useDrawerStore();
+  const { isEnterprise } = useConfig();
 
-  const { sources, persistSources, updateSource } = useSourceCRUD();
-  const { actions, createAction, updateAction, deleteAction } = useActionCRUD();
-  const { destinations, createDestination, updateDestination, deleteDestination } = useDestinationCRUD();
-  const { instrumentationRules, createInstrumentationRule, updateInstrumentationRule, deleteInstrumentationRule } = useInstrumentationRuleCRUD();
+  const { fetchDescribeSource } = useDescribe();
+  const { categories } = useDestinationCategories();
+  const { persistSources, updateSource } = useSourceCRUD();
+  const { potentialDestinations } = usePotentialDestinations();
+  const { createAction, updateAction, deleteAction } = useActionCRUD();
+  const { testConnection, testConnectionResult, isTestConnectionLoading } = useTestConnection();
+  const { createDestination, updateDestination, deleteDestination } = useDestinationCRUD();
+  const { createInstrumentationRule, updateInstrumentationRule, deleteInstrumentationRule } = useInstrumentationRuleCRUD();
 
   const [selectedNamespace, setSelectedNamespace] = useState('');
-  const { allNamespaces, data: namespace, loading: nsLoad } = useNamespace(selectedNamespace);
-
-  const { isPro } = useDescribeOdigos();
-  const { categories } = useDestinationCategories();
-  const { potentialDestinations } = usePotentialDestinations();
-  const { data: testResult, loading: testLoading, testConnection } = useTestConnection();
-  const { data: describeSource } = useDescribeSource(typeof drawerEntityId === 'object' ? (drawerEntityId as WorkloadId) : undefined);
+  const { namespace } = useNamespace(selectedNamespace);
 
   return (
     <>
       {/* modals */}
-      <SourceModal
-        namespaces={allNamespaces}
-        namespace={namespace}
-        namespacesLoading={nsLoad}
-        selectedNamespace={selectedNamespace}
-        setSelectedNamespace={setSelectedNamespace}
-        persistSources={persistSources}
-      />
+      <SourceModal namespace={namespace} selectedNamespace={selectedNamespace} setSelectedNamespace={setSelectedNamespace} persistSources={persistSources} />
       <DestinationModal
         isOnboarding={false}
         categories={categories}
         potentialDestinations={potentialDestinations}
         createDestination={createDestination}
         testConnection={testConnection}
-        testLoading={testLoading}
-        testResult={testResult}
+        testResult={testConnectionResult}
+        testLoading={isTestConnectionLoading}
       />
-      <InstrumentationRuleModal isEnterprise={isPro} createInstrumentationRule={createInstrumentationRule} />
+      <InstrumentationRuleModal isEnterprise={isEnterprise} createInstrumentationRule={createInstrumentationRule} />
       <ActionModal createAction={createAction} />
 
       {/* drawers */}
-      <SourceDrawer sources={sources} persistSources={persistSources} updateSource={updateSource} describe={describeSource} />
+      <SourceDrawer persistSources={persistSources} updateSource={updateSource} fetchDescribeSource={fetchDescribeSource} />
       <DestinationDrawer
         categories={categories}
-        destinations={destinations}
         updateDestination={updateDestination}
         deleteDestination={deleteDestination}
         testConnection={testConnection}
-        testLoading={testLoading}
-        testResult={testResult}
+        testResult={testConnectionResult}
+        testLoading={isTestConnectionLoading}
       />
-      <InstrumentationRuleDrawer instrumentationRules={instrumentationRules} updateInstrumentationRule={updateInstrumentationRule} deleteInstrumentationRule={deleteInstrumentationRule} />
-      <ActionDrawer actions={actions} updateAction={updateAction} deleteAction={deleteAction} />
+      <InstrumentationRuleDrawer updateInstrumentationRule={updateInstrumentationRule} deleteInstrumentationRule={deleteInstrumentationRule} />
+      <ActionDrawer updateAction={updateAction} deleteAction={deleteAction} />
     </>
   );
 };
 
-export default OverviewModalsAndDrawers;
+export { OverviewModalsAndDrawers };

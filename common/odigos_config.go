@@ -102,14 +102,13 @@ type OdigosConfiguration struct {
 	IgnoredContainers         []string                       `json:"ignoredContainers,omitempty"`
 	Psp                       bool                           `json:"psp,omitempty"`
 	ImagePrefix               string                         `json:"imagePrefix,omitempty"`
-	OdigletImage              string                         `json:"odigletImage,omitempty"`
-	InstrumentorImage         string                         `json:"instrumentorImage,omitempty"`
-	AutoscalerImage           string                         `json:"autoscalerImage,omitempty"`
 	SkipWebhookIssuerCreation bool                           `json:"skipWebhookIssuerCreation,omitempty"`
 	CollectorGateway          *CollectorGatewayConfiguration `json:"collectorGateway,omitempty"`
 	CollectorNode             *CollectorNodeConfiguration    `json:"collectorNode,omitempty"`
 	Profiles                  []ProfileName                  `json:"profiles,omitempty"`
 	AllowConcurrentAgents     *bool                          `json:"allowConcurrentAgents,omitempty"`
 	UiMode                    UiMode                         `json:"uiMode,omitempty"`
+	UiPaginationLimit         int                            `json:"uiPaginationLimit,omitempty"`
 	CentralBackendURL         string                         `json:"centralBackendURL,omitempty"`
+	MountMethod               *MountMethod                   `json:"mountMethod,omitempty"`
 }
