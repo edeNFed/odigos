@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/odigos-io/odigos/cli/pkg/remote"
@@ -30,13 +31,14 @@ import (
 func (o *Orchestrator) rollBack(obj client.Object) error {
 	// We create a new context for the rollback operation to ensure that the operation is not cancelled by the parent context
 	ctx := context.Background()
+	logger := slog.With("name", obj.GetName(), "namespace", obj.GetNamespace())
 
-	o.log("Rolling back changes to pods")
+	logger.Info("Rolling back changes")
 	if !o.Remote {
 		source, err := getSource(ctx, o.Client, obj)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				o.log("No changes made by Odigos, skipping rollback")
+				logger.Warn("No changes made by Odigos, skipping rollback")
 				return nil
 			}
 			return err
@@ -44,13 +46,13 @@ func (o *Orchestrator) rollBack(obj client.Object) error {
 
 		err = o.Client.OdigosClient.Sources(obj.GetNamespace()).Delete(ctx, source.GetName(), metav1.DeleteOptions{})
 		if err != nil {
-			o.log("Error deleting source")
+			logger.Error("Error deleting source", "error", err)
 			return err
 		}
 	} else {
 		err := remote.DeleteSource(ctx, obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(), obj.GetName())
 		if err != nil {
-			o.log("Error deleting source")
+			logger.Error("Error deleting source", "error", err)
 			return err
 		}
 	}
@@ -58,23 +60,23 @@ func (o *Orchestrator) rollBack(obj client.Object) error {
 	err := wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (bool, error) {
 		rolloutCompleted, err := utils.VerifyAllPodsAreNOTInstrumented(ctx, o.Client, obj)
 		if err != nil {
-			o.log("Error verifying all pods are not instrumented")
+			logger.Error("Error verifying all pods are not instrumented", "error", err)
 			return false, err
 		}
 
 		if rolloutCompleted {
-			o.log("Rollout completed, all running pods does not contains instrumentation")
+			logger.Info("Rollout completed, all running pods does not contains instrumentation")
 		}
 
 		return rolloutCompleted, nil
 	})
 
 	if err != nil {
-		o.log("Error rolling back changes")
+		logger.Error("Error verifying all pods are not instrumented", "error", err)
 		return err
 	}
 
-	o.log("Rollback completed successfully")
+	logger.Info("Rollback completed successfully")
 	return nil
 }
 

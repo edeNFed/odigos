@@ -8,10 +8,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/charmbracelet/log"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/odigos-io/odigos/cli/cmd/resources"
 
@@ -41,6 +47,7 @@ const (
 	remoteFlag                 = "remote"
 	onlyDeploymentFlag         = "only-deployment"
 	onlyNamespaceFlag          = "only-namespace"
+	goroutinesFlag             = "goroutines"
 )
 
 // instrumentCmd represents the instrument command
@@ -58,6 +65,11 @@ var clusterCmd = &cobra.Command{
 	Long: `Instrument entire cluster with Odigos. This command will instrument the entire Kubernetes cluster with
 Odigos CLI and monitor the instrumentation status.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		slog.SetDefault(slog.New(log.NewWithOptions(os.Stderr, log.Options{
+			ReportTimestamp: true,
+			TimeFormat:      time.Kitchen,
+		})))
+
 		ctx, cancel := context.WithCancel(cmd.Context())
 		var uiClient *remote.UIClientViaPortForward
 		ch := make(chan os.Signal, 1)
@@ -73,6 +85,16 @@ Odigos CLI and monitor the instrumentation status.`,
 			<-ch
 			cancel()
 		}()
+
+		parallelSizeStr := cmd.Flag(goroutinesFlag).Value.String()
+		parallelSize, err := strconv.Atoi(parallelSizeStr)
+		if err != nil {
+			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Invalid value for goroutines: %s\n", err))
+			return
+		}
+
+		group, ctx := errgroup.WithContext(ctx)
+		group.SetLimit(parallelSize)
 
 		excludedNs, err := readFileLines(cmd.Flag(excludeNamespacesFileFlag).Value.String())
 		if err != nil {
@@ -144,12 +166,13 @@ Odigos CLI and monitor the instrumentation status.`,
 
 		runPreflightChecks(ctx, cmd, client, isRemote)
 
-		fmt.Printf("Starting instrumentation ...\n")
-		instrumentCluster(ctx, client, excludedNs, excludedApps, dryRun, isRemote, onlyNamespace, onlyDeployment)
+		slog.Info("Starting instrumentation ...")
+		instrumentCluster(ctx, client, excludedNs, excludedApps, dryRun, isRemote, onlyNamespace, onlyDeployment, group)
 	},
 }
 
-func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, excludedApps map[string]struct{}, dryRun bool, remote bool, onlyNamespace, onlyDeployment string) {
+func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, excludedApps map[string]struct{}, dryRun bool, remote bool, onlyNamespace, onlyDeployment string,
+	group *errgroup.Group) {
 	systemNs := sliceToMap(k8sconsts.DefaultIgnoredNamespaces)
 	odigosNs, err := resources.GetOdigosNamespace(client, ctx)
 	systemNs[odigosNs] = struct{}{}
@@ -182,17 +205,21 @@ func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, exc
 			return
 		}
 
-		err = orchestrator.Apply(ctx, dep, func(ctx context.Context, name string, namespace string) (*corev1.PodTemplateSpec, error) {
-			dep, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		group.Go(func() error {
+			err = orchestrator.Apply(ctx, dep, func(ctx context.Context, name string, namespace string) (*corev1.PodTemplateSpec, error) {
+				dep, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+				if err != nil {
+					return nil, err
+				}
+				return &dep.Spec.Template, nil
+			})
+
 			if err != nil {
-				return nil, err
+				printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Failed to instrument deployment: %s\n", err))
 			}
-			return &dep.Spec.Template, nil
+			return nil
 		})
-		if err != nil {
-			printFatalError(err, fmt.Sprintf("\033[31mERROR\033[0m Failed to instrument deployment: %s\n", err))
-			return
-		}
+
 		return
 	}
 
@@ -209,22 +236,23 @@ func instrumentCluster(ctx context.Context, client *kube.Client, excludedNs, exc
 	}
 
 	for _, ns := range nsList.Items {
-		fmt.Printf("Instrumenting namespace: %s\n", ns.Name)
+		slog.Info("Instrumenting namespace", "namespace", ns.Name)
 		_, excluded := excludedNs[ns.Name]
 		_, system := systemNs[ns.Name]
 		if excluded || system {
-			fmt.Printf("  - Skipping namespace due to exclusion file or system namespace\n")
+			slog.Warn("Skipping namespace due to exclusion file or system namespace", "namespace", ns.Name)
 			continue
 		}
 
-		err = instrumentNamespace(ctx, client, ns.Name, excludedApps, orchestrator, dryRun)
+		err = instrumentNamespace(ctx, client, ns.Name, excludedApps, orchestrator, dryRun, group)
 		if errors.Is(err, context.Canceled) {
 			return
 		}
 	}
 }
 
-func instrumentNamespace(ctx context.Context, client *kube.Client, ns string, excludedApps map[string]struct{}, orchestrator *lifecycle.Orchestrator, dryRun bool) error {
+func instrumentNamespace(ctx context.Context, client *kube.Client, ns string, excludedApps map[string]struct{}, orchestrator *lifecycle.Orchestrator, dryRun bool,
+	group *errgroup.Group) error {
 	deps, err := client.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		fmt.Printf("  - \033[31mERROR\033[0m Cannot list deployments: %s\n", err)
@@ -238,29 +266,34 @@ func instrumentNamespace(ctx context.Context, client *kube.Client, ns string, ex
 			Kind:       "Deployment",
 		}
 
-		fmt.Printf("  - Inspecting Deployment: %s\n", dep.Name)
+		logger := slog.With("name", dep.Name, "namespace", ns)
+		logger.Info("Inspecting Deployment")
 		_, excluded := excludedApps[dep.Name]
 		if excluded {
-			fmt.Printf("    - Skipping deployment due to exclusion file\n")
+			logger.Warn("Skipping deployment due to exclusion file")
 			continue
 		}
 
 		if dryRun {
-			fmt.Printf("    - Dry-Run mode ENABLED - No changes will be made\n")
+			logger.Warn("Dry-Run mode ENABLED - No changes will be made")
 			continue
 		}
 
-		err = orchestrator.Apply(ctx, &dep, func(ctx context.Context, name string, namespace string) (*corev1.PodTemplateSpec, error) {
-			dep, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return &dep.Spec.Template, nil
-		})
+		group.Go(func() error {
+			err = orchestrator.Apply(ctx, &dep, func(ctx context.Context, name string, namespace string) (*corev1.PodTemplateSpec, error) {
+				dep, err := client.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+				if err != nil {
+					return nil, err
+				}
+				return &dep.Spec.Template, nil
+			})
 
-		if errors.Is(err, context.Canceled) {
-			return err
-		}
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
+
+			return nil
+		})
 	}
 
 	return nil
@@ -322,6 +355,7 @@ func init() {
 	clusterCmd.Flags().Bool(remoteFlag, false, "Use remote in-cluster service for checking instrumentation status")
 	clusterCmd.Flags().String(onlyNamespaceFlag, "", "Namespace of the deployment to instrument (must be used with --only-deployment)")
 	clusterCmd.Flags().String(onlyDeploymentFlag, "", "Name of the deployment to instrument (must be used with --only-namespace)")
+	clusterCmd.Flags().Int(goroutinesFlag, 3, "Number of goroutines to use for parallel onboarding (default 3)")
 }
 
 func sliceToMap(slice []string) map[string]struct{} {

@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/odigos-io/odigos/api/odigos/v1alpha1"
 
@@ -73,11 +74,12 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 	go func() {
 		defer close(done)
 		state := o.getCurrentState(ctx, obj)
-		o.log(fmt.Sprintf("Current state: %s", state))
+		logger := slog.With("name", obj.GetName(), "namespace", obj.GetNamespace())
+		logger.Info("Calculated current state", "state", state)
 
 		if state == UnknownState {
 			if err := o.rollBack(obj); err != nil {
-				o.log(fmt.Sprintf("Error rolling back: %s", err))
+				logger.Error("Error rolling back from unknown state", "error", err)
 				finalErr = fmt.Errorf("failed to rollback from unknown state: %w", err)
 				return
 			}
@@ -89,9 +91,9 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 			select {
 			case <-ctx.Done():
 				// Context was cancelled, perform rollback
-				o.log("Context cancelled, rolling back current object")
+				logger.Warn("Context cancelled, rolling back current object")
 				if err := o.rollBack(obj); err != nil {
-					o.log(fmt.Sprintf("Error rolling back after context cancellation: %s", err))
+					logger.Error("Error rolling back after context cancellation", "error", err)
 					finalErr = fmt.Errorf("failed to rollback after context cancellation: %w", err)
 					return
 				}
@@ -100,16 +102,16 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 			default:
 				templateSpec, err := templateSpecFetcher(ctx, obj.GetName(), obj.GetNamespace())
 				if err != nil {
-					o.log(fmt.Sprintf("Error fetching pod template spec: %s", err))
+					slog.Error("Error fetching pod template spec", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 					finalErr = fmt.Errorf("failed to fetch template spec during transition: %w", err)
 					return
 				}
 
 				if err := nextTransition.Execute(ctx, obj, templateSpec, o.Remote); err != nil {
-					o.log(fmt.Sprintf("Error executing transition: %s", err))
+					slog.Error("Error executing transition", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 					// Attempt rollback on execution error
 					if rbErr := o.rollBack(obj); rbErr != nil {
-						o.log(fmt.Sprintf("Error rolling back after failed execution: %s", rbErr))
+						slog.Error("Error rolling back after failed execution", "error", rbErr, "name", obj.GetName(), "namespace", obj.GetNamespace())
 						finalErr = fmt.Errorf("failed to rollback after execution error: %w", rbErr)
 						return
 					}
@@ -124,11 +126,10 @@ func (o *Orchestrator) Apply(ctx context.Context, obj client.Object, templateSpe
 					state = o.getCurrentState(ctx, obj)
 				}
 
-				o.log(fmt.Sprintf("Current state: %s", state))
-
+				slog.Info("Calculated next state", "name", obj.GetName(), "namespace", obj.GetNamespace(), "state", state)
 				if state == UnknownState {
 					if err := o.rollBack(obj); err != nil {
-						o.log(fmt.Sprintf("Error rolling back: %s", err))
+						slog.Error("Error rolling back from unknown state during transition", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 						finalErr = fmt.Errorf("failed to rollback from unknown state during transition: %w", err)
 						return
 					}
@@ -163,12 +164,12 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 	if o.Remote {
 		describe, err = remote.DescribeSource(ctx, o.Client, o.OdigosNamespace, string(kind), obj.GetNamespace(), name)
 		if err != nil {
-			o.log(fmt.Sprintf("Error describing source: %s", err))
+			slog.Error("Error describing source", "error", err, "name", name, "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 
 		if describe == nil {
-			o.log("Describe source returned nil, skipping")
+			slog.Info("Describe source returned nil, skipping", "name", name, "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 
@@ -183,7 +184,7 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 			LabelSelector: v1alpha1.GetSourceLabelSelector(obj).String(),
 		})
 		if err != nil {
-			o.log(fmt.Sprintf("Error listing sources: %s", err))
+			slog.Error("Error listing sources", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 
@@ -197,7 +198,7 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 				return LangDetectionInProgress
 			}
 
-			o.log(fmt.Sprintf("Error getting instrumentation config: %s, skipping", err))
+			slog.Error("Error getting instrumentation config", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 	} else {
@@ -213,7 +214,7 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 				return LangDetectionInProgress
 			}
 
-			o.log(fmt.Sprintf("Error getting instrumented application: %s, skipping", err))
+			slog.Error("Error getting instrumented application", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 
@@ -230,7 +231,7 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 		}
 
 		if !langFound {
-			o.log("Failed to deetect language, skipping")
+			slog.Error("Failed to detect language", "name", icName, "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 	} else {
@@ -257,14 +258,14 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 		}
 
 		if !langFound {
-			o.log("Failed to deetect language, skipping")
+			slog.Error("Failed to detect language", "name", name, "namespace", obj.GetNamespace())
 			return UnknownState
 		}
 	}
 
 	instrumented, err := k8sutils.VerifyAllPodsAreInstrumented(ctx, o.Client, obj)
 	if err != nil {
-		o.log(fmt.Sprintf("Error verifying all pods are instrumented: %s", err))
+		slog.Error("Error verifying all pods are instrumented", "error", err, "name", obj.GetName(), "namespace", obj.GetNamespace())
 		return UnknownState
 	}
 
@@ -275,8 +276,4 @@ func (o *Orchestrator) getCurrentState(ctx context.Context, obj client.Object) S
 	// TODO(edenfed): If relevant language + InstrumentationInstance does not exists = InstrumentationInProgress
 
 	return InstrumentedState
-}
-
-func (o *Orchestrator) log(str string) {
-	fmt.Printf("    > %s\n", str)
 }

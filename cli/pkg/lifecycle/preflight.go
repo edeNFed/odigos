@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -29,14 +30,14 @@ func (p *PreflightCheck) Execute(ctx context.Context, obj client.Object, templat
 		if ru != nil && ru.MaxUnavailable != nil && ru.MaxUnavailable.StrVal == "100%" {
 			return fmt.Errorf("Deployment %s has MaxUnavailable set to 100%%", deployment.Name)
 		} else {
-			p.log("Deployment MaxUnavailable check passed")
+			slog.Info("Deployment MaxUnavailable check passed", "name", deployment.Name, "namespace", deployment.Namespace)
 		}
 
 		// Check if all pods of the deployment are healthy
 		if deployment.Status.UnavailableReplicas > 0 {
 			return fmt.Errorf("Deployment %s has %d unavailable replicas", deployment.Name, deployment.Status.UnavailableReplicas)
 		} else {
-			p.log("Deployment replicas check passed")
+			slog.Info("Deployment replicas check passed", "name", deployment.Name, "namespace", deployment.Namespace)
 		}
 	}
 

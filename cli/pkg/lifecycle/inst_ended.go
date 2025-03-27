@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,30 +29,31 @@ func (i *InstrumentationEnded) To() State {
 
 func (i *InstrumentationEnded) Execute(ctx context.Context, obj client.Object, templateSpec *corev1.PodTemplateSpec, isRemote bool) error {
 	return wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (bool, error) {
-		i.log("Waiting for all pods to be instrumented ...")
+		logger := slog.With("name", obj.GetName(), "namespace", obj.GetNamespace())
+		logger.Info("Waiting for all pods to be instrumented ...")
 		rolloutCompleted, err := utils.VerifyAllPodsAreInstrumented(ctx, i.client, obj)
 		if err != nil {
-			i.log("Error verifying all pods are instrumented")
+			logger.Error("Error verifying all pods are instrumented", "error", err)
 			return false, err
 		}
 
 		if rolloutCompleted {
-			i.log("Rollout completed, all running pods contains the new instrumentation")
+			logger.Info("Rollout completed, all running pods contains the new instrumentation")
 			coolOff := GetCoolOff(ctx)
 			if coolOff > 0 {
-				i.log("Cool off flag is set, waiting for pods to be Running for " + coolOff.String() + " before marking the workload as instrumented")
+				logger.Info("Cool off flag is set, waiting for pods to be Running before marking the workload as instrumented", "coolOff", coolOff)
 				time.Sleep(coolOff)
 				afterCoolOff, err := utils.VerifyAllPodsAreInstrumented(ctx, i.client, obj)
 				if err != nil {
-					i.log("Error verifying all pods are instrumented")
+					logger.Error("Error verifying all pods are instrumented")
 					return false, err
 				}
 
 				if afterCoolOff {
-					i.log("Cool off check completed, all running pods contains the new instrumentation")
+					logger.Info("Cool off check completed, all running pods contains the new instrumentation")
 					return true, nil
 				} else {
-					i.log("Cool off check not completed, all running pods does not contain the new instrumentation")
+					logger.Warn("Cool off check not completed, all running pods does not contain the new instrumentation")
 					return false, nil
 				}
 			} else {
@@ -73,7 +75,7 @@ func (i *InstrumentationEnded) Execute(ctx context.Context, obj client.Object, t
 			}
 
 			// Print how many pods in every phase in one line
-			i.log(fmt.Sprintf("Pods status: %v", podsInPhase))
+			logger.Info("Pods status", "podsInPhase", fmt.Sprintf("%v", podsInPhase))
 		}
 
 		return false, nil

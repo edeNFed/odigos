@@ -2,7 +2,6 @@ package lifecycle
 
 import (
 	"context"
-	"fmt"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,10 +22,6 @@ type BaseTransition struct {
 
 func (b *BaseTransition) Init(client *kube.Client) {
 	b.client = client
-}
-
-func (b *BaseTransition) log(str string) {
-	fmt.Printf("    > %s\n", str)
 }
 
 var allTransitions = []Transition{

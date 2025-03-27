@@ -3,7 +3,7 @@ package lifecycle
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/odigos-io/odigos/cli/cmd/resources"
@@ -41,7 +41,7 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 			ic, err := w.client.OdigosClient.InstrumentationConfigs(obj.GetNamespace()).Get(ctx, iaName, metav1.GetOptions{})
 			if err != nil {
 				if !apierrors.IsNotFound(err) {
-					w.log("Error while fetching InstrumentationConfig: " + err.Error())
+					slog.Error("Error while fetching InstrumentationConfig", "error", err, "name", iaName, "namespace", obj.GetNamespace())
 				}
 				return false, nil
 			}
@@ -53,7 +53,7 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 			langFound := false
 			for _, rd := range ic.Status.RuntimeDetailsByContainer {
 				if rd.Language != common.UnknownProgrammingLanguage && rd.Language != common.IgnoredProgrammingLanguage {
-					w.log(fmt.Sprintf("Detected language: %s", rd.Language))
+					slog.Info("Detected language", "language", rd.Language, "name", iaName, "namespace", obj.GetNamespace())
 					langFound = true
 					break
 				}
@@ -77,7 +77,7 @@ func (w *WaitForLangDetection) Execute(ctx context.Context, obj client.Object, t
 		}
 
 		if err != nil {
-			w.log(fmt.Sprintf("Error describing source: %s", err))
+			slog.Error("Error describing source", "error", err, "name", name, "namespace", obj.GetNamespace())
 			return false, nil
 		}
 
