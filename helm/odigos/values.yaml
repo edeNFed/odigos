@@ -596,6 +596,32 @@ clickhouseDestinationJsonType:
 wasp:
   enabled: false
 
+# Continuous Profiling (eBPF-based CPU profiling via Parca)
+# Only profiles pods instrumented by Odigos. Access at /profiling/ in the UI.
+profiler:
+  enabled: false
+  agent:
+    version: "v0.45.0"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  server:
+    version: "v0.22.0"
+    # Memory limit for profile storage (bytes). Old profiles evicted when full.
+    storageActiveMemory: "1073741824"
+    storageSizeLimit: "4Gi"
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
 # configuration for metrics sources (where odigos collects metrics from)
 # only relevant when a metrics destination is enabled
 metricsSources:

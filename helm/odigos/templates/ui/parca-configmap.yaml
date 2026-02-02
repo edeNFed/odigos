@@ -1,0 +1,17 @@
+{{- if .Values.profiler.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parca-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: parca
+    odigos.io/system-object: "true"
+data:
+  parca.yaml: |
+    object_storage:
+      bucket:
+        type: FILESYSTEM
+        config:
+          directory: /data
+{{- end }}

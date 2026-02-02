@@ -258,6 +258,11 @@ func startHTTPServer(ctx context.Context, flags *Flags, logger logr.Logger, odig
 	// Diagnose download endpoint (used by GraphQL diagnose query)
 	r.GET("/diagnose/download", services.DiagnoseDownload)
 
+	// Profiling proxy (to Parca sidecar)
+	profilingHandler := services.ProfilingProxyHandler()
+	r.Any("/profiling", profilingHandler)
+	r.Any("/profiling/*path", profilingHandler)
+
 	return r, nil
 }
 

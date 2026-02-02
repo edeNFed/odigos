@@ -83,14 +83,46 @@ spec:
         volumeMounts:
           - name: ui-db-storage
             mountPath: /data
+      {{- if .Values.profiler.enabled }}
+      - name: parca
+        image: ghcr.io/parca-dev/parca:{{ .Values.profiler.server.version | default "v0.22.0" }}
+        args:
+          - /parca
+          - --config-path=/etc/parca/parca.yaml
+          - --path-prefix=/profiling
+          - --storage-active-memory={{ .Values.profiler.server.storageActiveMemory | default "1073741824" }}
+          - --enable-persistence
+          - --storage-path=/data
+          - --storage-enable-wal
+        ports:
+          - containerPort: 7070
+            name: parca-http
+        volumeMounts:
+          - name: parca-config
+            mountPath: /etc/parca
+          - name: parca-data
+            mountPath: /data
+        resources:
+{{ toYaml .Values.profiler.server.resources | indent 10 }}
+      {{- end }}
       securityContext:
+      {{- if not .Values.profiler.enabled }}
         runAsNonRoot: true
+      {{- end }}
       serviceAccountName: odigos-ui
       terminationGracePeriodSeconds: 10
       volumes:
         - name: ui-db-storage
           emptyDir:
             sizeLimit: 50Mi
+        {{- if .Values.profiler.enabled }}
+        - name: parca-config
+          configMap:
+            name: parca-config
+        - name: parca-data
+          emptyDir:
+            sizeLimit: {{ .Values.profiler.server.storageSizeLimit | default "2Gi" }}
+        {{- end }}
       {{ include "odigos.renderPullSecrets" . | nindent 6 }}
 {{- with .Values.ui }}
   {{- if .tolerations }}

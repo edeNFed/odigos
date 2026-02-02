@@ -1,0 +1,28 @@
+{{- if .Values.profiler.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parca-agent-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: parca-agent
+    odigos.io/system-object: "true"
+data:
+  parca-agent.yaml: |
+    relabel_configs:
+      # Only profile Odigos-instrumented pods (have odigos.io/agents-meta-hash label)
+      - source_labels: [__meta_kubernetes_pod_labelpresent_odigos_io_agents_meta_hash]
+        regex: "true"
+        action: keep
+      # Add Kubernetes metadata to profiles
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_container_name]
+        target_label: container
+      - source_labels: [__meta_kubernetes_pod_controller_name]
+        target_label: workload
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        target_label: app
+{{- end }}
