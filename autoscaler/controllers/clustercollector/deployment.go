@@ -293,6 +293,14 @@ func getDesiredDeployment(ctx context.Context, c client.Client, enabledDests *od
 		)
 	}
 
+	// Enable profiles support feature gate when profiler is enabled
+	if gateway.Spec.ProfilerEnabled != nil && *gateway.Spec.ProfilerEnabled {
+		desiredDeployment.Spec.Template.Spec.Containers[0].Args = append(
+			desiredDeployment.Spec.Template.Spec.Containers[0].Args,
+			"--feature-gates=service.profilesSupport",
+		)
+	}
+
 	err = ctrl.SetControllerReference(gateway, desiredDeployment, scheme)
 	if err != nil {
 		return nil, err

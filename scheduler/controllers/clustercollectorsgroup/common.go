@@ -14,7 +14,7 @@ import (
 )
 
 func newClusterCollectorGroup(namespace string, resourcesSettings *odigosv1.CollectorsGroupResourcesSettings, serviceGraphDisabled *bool, clusterMetricsEnabled *bool,
-	httpsProxyAddress *string, nodeSelector *map[string]string) *odigosv1.CollectorsGroup {
+	httpsProxyAddress *string, nodeSelector *map[string]string, profilerEnabled *bool) *odigosv1.CollectorsGroup {
 	return &odigosv1.CollectorsGroup{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "CollectorsGroup",
@@ -32,6 +32,7 @@ func newClusterCollectorGroup(namespace string, resourcesSettings *odigosv1.Coll
 			ClusterMetricsEnabled:   clusterMetricsEnabled,
 			HttpsProxyAddress:       httpsProxyAddress,
 			NodeSelector:            nodeSelector,
+			ProfilerEnabled:         profilerEnabled,
 		},
 	}
 }
@@ -62,12 +63,19 @@ func sync(ctx context.Context, c client.Client, scheme *runtime.Scheme) error {
 
 	nodeSelector := odigosConfiguration.CollectorGateway.NodeSelector
 
+	// default profiler is disabled (profilerEnabled to false)
+	profilerEnabled := odigosConfiguration.CollectorGateway.ProfilerEnabled
+	if profilerEnabled == nil {
+		result := false
+		profilerEnabled = &result
+	}
+
 	// cluster collector is always set and never deleted at the moment.
 	// this is to accelerate spinup time and avoid errors while things are gradually being reconciled
 	// and started.
 	// in the future we might want to support a deployment of instrumentations only and allow user
 	// to setup their own collectors, then we would avoid adding the cluster collector by default.
-	clusterCollectorGroup := newClusterCollectorGroup(namespace, resourceSettings, serviceGraphDisabled, clusterMetricsEnabled, odigosConfiguration.CollectorGateway.HttpsProxyAddress, nodeSelector)
+	clusterCollectorGroup := newClusterCollectorGroup(namespace, resourceSettings, serviceGraphDisabled, clusterMetricsEnabled, odigosConfiguration.CollectorGateway.HttpsProxyAddress, nodeSelector, profilerEnabled)
 	err = utils.SetOwnerControllerToSchedulerDeployment(ctx, c, clusterCollectorGroup, scheme)
 	if err != nil {
 		return err

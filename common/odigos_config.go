@@ -143,6 +143,10 @@ type CollectorGatewayConfiguration struct {
 	// This is a hard requirement: the pod will be scheduled ONLY on nodes that match all labels.
 	// If no matching nodes exist, the pod will remain Pending.
 	NodeSelector *map[string]string `json:"nodeSelector,omitempty"`
+
+	// ProfilerEnabled enables continuous profiling via eBPF profiler.
+	// When enabled, the node collector collects profiles and sends to gateway.
+	ProfilerEnabled *bool `json:"profilerEnabled,omitempty"`
 }
 type UserInstrumentationEnvs struct {
 	Languages map[ProgrammingLanguage]LanguageConfig `json:"languages,omitempty"`

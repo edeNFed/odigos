@@ -296,6 +296,12 @@ func newNodeCollectorGroup(odigosConfiguration common.OdigosConfiguration, allDe
 		}
 	}
 
+	// profiler is disabled by default
+	var profilerEnabled *bool
+	if odigosConfiguration.CollectorGateway != nil && odigosConfiguration.CollectorGateway.ProfilerEnabled != nil {
+		profilerEnabled = odigosConfiguration.CollectorGateway.ProfilerEnabled
+	}
+
 	return &odigosv1.CollectorsGroup{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "CollectorsGroup",
@@ -312,6 +318,7 @@ func newNodeCollectorGroup(odigosConfiguration common.OdigosConfiguration, allDe
 			ResourcesSettings:         getResourceSettings(odigosConfiguration),
 			OtlpExporterConfiguration: otlpExporterConfiguration,
 			Metrics:                   metricsConfig,
+			ProfilerEnabled:           profilerEnabled,
 		},
 	}
 }

@@ -98,6 +98,8 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.130.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.130.0
   - gomod: github.com/odigos-io/odigos/collector/receivers/odigosebpfreceiver v0.130.0
+  - gomod: go.opentelemetry.io/ebpf-profiler v0.0.202529
+    import: go.opentelemetry.io/ebpf-profiler/collector
 
 # https://github.com/open-telemetry/opentelemetry-collector/issues/8127
 excludes:

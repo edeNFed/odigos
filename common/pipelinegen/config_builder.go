@@ -17,6 +17,7 @@ type GatewayConfigOptions struct {
 	ServiceGraphDisabled  *bool
 	ClusterMetricsEnabled *bool
 	OdigosNamespace       string
+	ProfilerEnabled       *bool
 }
 
 func GetGatewayConfig(
@@ -170,6 +171,11 @@ func CalculateGatewayConfig(
 	}
 	if metricsEnabled && gatewayOptions.ClusterMetricsEnabled != nil && *gatewayOptions.ClusterMetricsEnabled {
 		insertClusterMetricsResources(currentConfig, gatewayOptions.OdigosNamespace)
+	}
+
+	// Add profiles debug pipeline if profiler is enabled
+	if gatewayOptions.ProfilerEnabled != nil && *gatewayOptions.ProfilerEnabled {
+		insertProfilesDebugPipeline(currentConfig)
 	}
 
 	// Final marshal to YAML
@@ -409,4 +415,18 @@ func insertClusterMetricsResources(currentConfig *config.Config, odigosNs string
 
 	pipeline.Receivers = append(pipeline.Receivers, "k8s_cluster")
 	currentConfig.Service.Pipelines[rootPipelineName] = pipeline
+}
+
+func insertProfilesDebugPipeline(currentConfig *config.Config) {
+	// Add debug exporter for profiles with detailed verbosity
+	currentConfig.Exporters["debug/profiles"] = config.GenericMap{
+		"verbosity": "detailed",
+	}
+
+	// Add profiles pipeline that receives from OTLP and outputs to debug exporter
+	currentConfig.Service.Pipelines["profiles"] = config.Pipeline{
+		Receivers:  []string{"otlp"},
+		Processors: []string{},
+		Exporters:  []string{"debug/profiles"},
+	}
 }

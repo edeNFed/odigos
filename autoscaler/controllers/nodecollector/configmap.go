@@ -213,6 +213,13 @@ func calculateCollectorConfigDomains(
 		configDomains["logs"] = logsConfig
 	}
 
+	// profiles
+	profilerEnabled := nodeCG.Spec.ProfilerEnabled != nil && *nodeCG.Spec.ProfilerEnabled
+	if profilerEnabled {
+		profilesConfig := collectorconfig.ProfilesConfig(odigosNamespace)
+		configDomains["profiles"] = profilesConfig
+	}
+
 	mergedConfig, err := config.MergeConfigs(configDomains)
 	if err != nil {
 		return nil, "", errors.Join(err, errors.New("failed to merge collector config domains"))

@@ -12,9 +12,5 @@ spec:
       port: 3000
     - name: otlp
       port: 4317
-    {{- if .Values.profiler.enabled }}
-    - name: parca
-      port: 7070
-    {{- end }}
   selector:
     app: odigos-ui
