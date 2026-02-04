@@ -1,0 +1,22 @@
+# Binaries
+profiles-viewer
+testclient
+
+# Node modules
+webapp/node_modules/
+
+# Build output (generated during Docker build)
+webapp/dist/*
+!webapp/dist/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Package lock (regenerated during build)
+webapp/package-lock.json

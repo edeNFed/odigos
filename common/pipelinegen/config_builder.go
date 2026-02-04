@@ -173,9 +173,9 @@ func CalculateGatewayConfig(
 		insertClusterMetricsResources(currentConfig, gatewayOptions.OdigosNamespace)
 	}
 
-	// Add profiles debug pipeline if profiler is enabled
+	// Add profiles pipeline if profiler is enabled (exports to profiles-viewer)
 	if gatewayOptions.ProfilerEnabled != nil && *gatewayOptions.ProfilerEnabled {
-		insertProfilesDebugPipeline(currentConfig)
+		insertProfilesPipeline(currentConfig, gatewayOptions.OdigosNamespace)
 	}
 
 	// Final marshal to YAML
@@ -417,16 +417,19 @@ func insertClusterMetricsResources(currentConfig *config.Config, odigosNs string
 	currentConfig.Service.Pipelines[rootPipelineName] = pipeline
 }
 
-func insertProfilesDebugPipeline(currentConfig *config.Config) {
-	// Add debug exporter for profiles with detailed verbosity
-	currentConfig.Exporters["debug/profiles"] = config.GenericMap{
-		"verbosity": "detailed",
+func insertProfilesPipeline(currentConfig *config.Config, odigosNamespace string) {
+	// Add OTLP exporter for profiles-viewer service
+	currentConfig.Exporters["otlp/profiles-viewer"] = config.GenericMap{
+		"endpoint": fmt.Sprintf("profiles-viewer.%s:4317", odigosNamespace),
+		"tls": config.GenericMap{
+			"insecure": true,
+		},
 	}
 
-	// Add profiles pipeline that receives from OTLP and outputs to debug exporter
+	// Add profiles pipeline that receives from OTLP and exports to profiles-viewer
 	currentConfig.Service.Pipelines["profiles"] = config.Pipeline{
 		Receivers:  []string{"otlp"},
 		Processors: []string{},
-		Exporters:  []string{"debug/profiles"},
+		Exporters:  []string{"otlp/profiles-viewer"},
 	}
 }

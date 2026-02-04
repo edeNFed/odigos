@@ -140,6 +140,10 @@ build-collector:
 build-ui:
 	$(MAKE) build-image/ui DOCKERFILE=frontend/$(DOCKERFILE) SUMMARY="UI for Odigos" DESCRIPTION="UI provides the frontend webapp for managing an Odigos installation." TAG=$(TAG) ORG=$(ORG) IMG_SUFFIX=$(IMG_SUFFIX)
 
+.PHONY: build-profiles-viewer
+build-profiles-viewer:
+	$(MAKE) build-image/profiles-viewer DOCKERFILE=profiles-viewer/$(DOCKERFILE) SUMMARY="Profiles Viewer for Odigos" DESCRIPTION="Profiles Viewer provides continuous profiling flame graphs visualization." TAG=$(TAG) ORG=$(ORG) IMG_SUFFIX=$(IMG_SUFFIX)
+
 .PHONY: verify-nodejs-agent
 verify-nodejs-agent:
 	@if [ ! -f ../opentelemetry-node/package.json ]; then \
@@ -150,7 +154,7 @@ verify-nodejs-agent:
 .PHONY: build-images
 build-images:
 	# prefer to build timeconsuimg images first to make better use of parallelism
-	make -j $(nproc) build-ui build-collector build-odiglet build-autoscaler build-scheduler build-instrumentor build-agents TAG=$(TAG) ORG=$(ORG) IMG_SUFFIX=$(IMG_SUFFIX) DOCKERFILE=$(DOCKERFILE)
+	make -j $(nproc) build-ui build-profiles-viewer build-collector build-odiglet build-autoscaler build-scheduler build-instrumentor build-agents TAG=$(TAG) ORG=$(ORG) IMG_SUFFIX=$(IMG_SUFFIX) DOCKERFILE=$(DOCKERFILE)
 
 .PHONY: build-images-rhel
 build-images-rhel:

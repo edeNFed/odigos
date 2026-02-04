@@ -598,10 +598,25 @@ wasp:
 
 # Continuous Profiling (eBPF-based CPU profiling via OTel eBPF Profiler)
 # When enabled, the node collector includes eBPF profiler receiver.
-# Profiles are sent to gateway and output to debug exporter (stdout).
+# Profiles are sent to gateway and displayed in the profiles-viewer UI.
 # Only profiles pods instrumented by Odigos.
 profiler:
   enabled: false
+
+# Profiles Viewer - displays continuous profiling flame graphs
+# Automatically enabled when profiler.enabled is true
+profilesViewer:
+  nodeSelector:
+  tolerations: []
+  affinity: {}
+  resources:
+    requests:
+      cpu: 10m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 750Mi
+  priorityClassName: ''
 
 # configuration for metrics sources (where odigos collects metrics from)
 # only relevant when a metrics destination is enabled
