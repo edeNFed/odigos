@@ -12,11 +12,11 @@ COPY profiles-viewer/webapp .
 RUN yarn build
 
 # Stage 3: Build Go binary with embedded static files
-FROM --platform=$BUILDPLATFORM golang:1.22 AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.23 AS backend-builder
 WORKDIR /app
 COPY . .
-# Remove webapp source and copy built dist
-RUN rm -rf profiles-viewer/webapp/*
+# Replace webapp dist with built frontend assets, preserving embed.go
+RUN rm -rf profiles-viewer/webapp/dist profiles-viewer/webapp/src profiles-viewer/webapp/node_modules
 COPY --from=frontend-builder /webapp/dist profiles-viewer/webapp/dist
 WORKDIR /app/profiles-viewer
 ARG TARGETARCH
